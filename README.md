@@ -150,23 +150,3 @@ if not settings.PRODUCTION:
 
     app.openapi = custom_openapi
 ```
-
-Phase 1 — Temel Altyapı ve C++ Core
-
-Proje kök yapısı ve başlangıç dosyaları.
-
-Klasörler:
-
-- core/: C++ WebAssembly modülü (skeleton)
-- frontend/: Angular uygulaması (placeholder)
-- backend/: Python FastAPI servisi (skeleton)
-- docker/: Docker konfigürasyonları (placeholders)
-- docs/: Proje dokümantasyonu
-- scripts/: Build/deploy scriptleri
-
-Hafta 1-2 hedefleri:
-
-- Proje dizinini oluşturmak
-- C++ core için basit bir skeleton hazırlamak
-- FastAPI backend için minimal endpoint eklemek
-- Build ve deploy scriptleri için placeholder oluşturmak
