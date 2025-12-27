@@ -1,0 +1,28 @@
+# Angular
+dist/
+node_modules/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# C++
+*.o
+*.wasm
+*.js
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite3
+todo.md
