@@ -1,0 +1,39 @@
+/* You can add global styles to this file, and also import other style files */
+/* src/styles.scss */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Medikal tema */
+.medical-theme {
+  --color-bg: #0f172a;
+  --color-card: #1e293b;
+  --color-text: #f1f5f9;
+  --color-primary: #0ea5e9;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+}
+
+/* EKG çizgisi efekti */
+.ekg-line {
+  stroke: #10b981;
+  stroke-width: 2;
+  fill: none;
+  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.5));
+}
+
+/* Alert animasyonu */
+@keyframes alert-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 20px rgba(239, 68, 68, 0);
+  }
+}
+.alert-pulse {
+  animation: alert-pulse 2s infinite;
+}
+/* You can add global styles to this file, and also import other style files */
