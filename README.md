@@ -1,4 +1,4 @@
-# VitalStream - Real-time ECG Analysis Platform
+# VitalStream - Real-time ECG Analysis
 
 ![VitalStream Dashboard](docs/screenshots/dashboard.png)
 
