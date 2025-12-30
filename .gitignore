@@ -26,3 +26,6 @@ Thumbs.db
 *.db
 *.sqlite3
 todo.md
+
+# Angular build cache (local only)
+/frontend/.angular
