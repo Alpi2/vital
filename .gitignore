@@ -29,3 +29,8 @@ todo.md
 
 # Angular build cache (local only)
 /frontend/.angular
+
+# Local Python virtualenvs used for development
+/backend/venv
+/backend/venv311
+venv/
