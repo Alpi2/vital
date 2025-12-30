@@ -20,8 +20,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 Notes:
 
 - Use Python 3.10+ for compatibility with pinned packages.
+- **Security:** this service requires a `SECRET_KEY` environment variable for signing tokens. Create a `.env` from `.env.example` and set `SECRET_KEY` before deploying to production. In development you can set `DEBUG=True` in `.env` to enable local dev behavior.
 - If you prefer Docker, a containerized recipe can be added to `docker/` to reproduce the build environment.
-  Backend (FastAPI)
 
 This folder contains a minimal FastAPI service skeleton.
 
