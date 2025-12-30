@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 from .config import settings
 from .database import engine, Base
@@ -11,6 +12,9 @@ from .api import patients, anomalies, reports, auth
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure data directory exists (used by sqlite file path)
+    Path("data").mkdir(parents=True, exist_ok=True)
+
     # Startup: create DB tables (run sync metadata.create_all in async context)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -61,37 +65,3 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow()}
-from fastapi import FastAPI
-from .api import patients, anomalies
-
-app = FastAPI(title="vitalstream-backend")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
-# include routers if available
-try:
-    app.include_router(patients.router, prefix="/api/patients")
-except Exception:
-    pass
-
-try:
-    app.include_router(anomalies.router, prefix="/api/anomalies")
-except Exception:
-    pass
-from fastapi import FastAPI
-
-app = FastAPI(title="vitalstream-backend")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
-@app.get("/add")
-async def add(a: int = 1, b: int = 2):
-    return {"result": a + b}
