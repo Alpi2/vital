@@ -39,9 +39,33 @@ VitalStream is a high-performance, real-time ECG analysis dashboard that simulat
 ### Quick Start with Docker
 
 ```bash
-git clone https://github.com/yourusername/vitalstream.git
-cd vitalstream
+git clone https://github.com/YOUR_USERNAME/vital.git
+cd vital
+
+# Create .env file from example
+cp backend/.env.example backend/.env
+# Edit backend/.env and set a secure SECRET_KEY
+
+# Build and start all services
 docker compose up --build
+
+# Or run in detached mode
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+
+# Stop all services
+docker compose down
+```
+
+**Services will be available at:**
+- Frontend: http://localhost:4200
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+- PostgreSQL: localhost:5432 (optional)
+- Redis: localhost:6379
+
 ```
 
 ### Manual Installation
@@ -50,6 +74,11 @@ Backend Setup:
 
 ```bash
 cd backend
+
+# Create environment file
+cp .env.example .env
+# Edit .env and set a secure SECRET_KEY
+
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
@@ -67,11 +96,40 @@ docker run --rm -v $(pwd)/../frontend/src/assets/wasm:/output emsdk-builder bash
 Frontend Setup:
 
 ```bash
-cd frontend/vitalstream-frontend
+cd frontend
 npm install
 npm run build
 npm start
 ```
+
+## 🗄️ Database Configuration
+
+### SQLite (Default - Development)
+
+The project uses SQLite by default for development:
+
+```bash
+# Already configured in backend/.env.example
+DATABASE_URL=sqlite+aiosqlite:///./data/vitalstream.db
+```
+
+### PostgreSQL (Production)
+
+For production environments, use PostgreSQL:
+
+```bash
+# Update backend/.env
+DATABASE_URL=postgresql+asyncpg://vitalstream:securepassword@localhost:5432/vitalstream
+
+# Start PostgreSQL with Docker Compose
+docker compose up postgres -d
+
+# Run migrations
+cd backend
+alembic upgrade head
+```
+
+**Note**: PostgreSQL requires `asyncpg` and `psycopg2-binary` packages (already included in requirements.txt).
 
 ## 🧪 Testing
 
