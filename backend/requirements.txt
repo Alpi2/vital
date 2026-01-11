@@ -12,5 +12,10 @@ celery==5.3.4
 python-dotenv==1.0.0
 httpx==0.23.3
 alembic==1.12.1
-fastapi>=0.95
-uvicorn[standard]>=0.22
+aiosqlite==0.22.1
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+pydantic-settings==2.1.0
+python-json-logger==2.0.7
+slowapi==0.1.4
+prometheus-fastapi-instrumentator==6.2.0
