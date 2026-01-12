@@ -22,8 +22,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite:///./data/vitalstream.db
+      - DATABASE_URL=sqlite+aiosqlite:///./data/vitalstream.db
       - CORS_ORIGINS=http://localhost:4200,http://frontend:80
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
     volumes:
       - ./backend/data:/app/data
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -40,21 +41,11 @@ services:
     ports:
       - "5432:5432"
 
-  # Redis (for caching and Celery)
+  # Redis (for caching)
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-
-  # Celery Worker
-  celery:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.celery
-    command: celery -A app.celery_app worker --loglevel=info
-    depends_on:
-      - redis
-      - backend
 
 volumes:
   postgres_data:
