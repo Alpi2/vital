@@ -1,38 +1,90 @@
-# Angular
+# Node/Angular
 dist/
 node_modules/
 *.log
+/frontend/.angular
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.$py.class
 venv/
+/venv/
+/backend/venv/
 .env
+.env.*
+Pipfile.lock
+poetry.lock
+*.egg-info/
+*.egg
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.pylint.d/
+.python-version
 
-# C++
+# C++/Rust/WebAssembly
 *.o
 *.wasm
 *.js
+target/
 
-# IDE
+# IDE/Editor
 .vscode/
 .idea/
-
-# OS
+.history/
+.swp
+.swo
 .DS_Store
 Thumbs.db
 
 # Database
 *.db
 *.sqlite3
+
+# Project/Dev/Local
 todo.md
-
-# Angular build cache (local only)
-/frontend/.angular
-
-# Local Python virtualenvs used for development
+todo1.md
+todo2.md
+local.settings.json
+.envrc
+.direnv/
+.cache/
+.npm/
+.yarn/
+.pnpm-debug.log
+.tmp/
+.log/
+.logs/
+.ipynb_checkpoints/
+.spyproject/
+.ropeproject/
+.editorconfig
+.gitattributes
+.gitmodules
+.svn/
+.hg/
+.bzr/
+.sass-cache/
+.grunt/
+.bower/
+.idea_modules/
+.project
+.classpath
+.settings/
+.metadata/
+.gradle/
+.terraform/
+.envrc
+.direnv/
+.env 
 /backend/venv
 venv/
-todo.md 
-todo1.md 
-todo2.md 
