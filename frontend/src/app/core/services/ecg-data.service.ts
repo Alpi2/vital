@@ -1,6 +1,7 @@
 import { Injectable, signal, computed, effect } from '@angular/core';
 import { BehaviorSubject, interval, Subscription, Observable } from 'rxjs';
 import { WasmLoaderService } from './wasm-loader.service';
+import { ApiService } from './api.service';
 
 export interface ECGDataPoint {
   timestamp: number;
@@ -33,7 +34,7 @@ export class ECGDataService {
 
   private playbackSubscription?: Subscription;
 
-  constructor(private wasmLoader: WasmLoaderService) {
+  constructor(private wasmLoader: WasmLoaderService, private apiService: ApiService) {
     effect(() => {
       const buffer = this.dataBuffer();
       if (buffer.length > 1000) {
@@ -45,9 +46,24 @@ export class ECGDataService {
   startSimulation(): void {
     if (this.isPlaying()) return;
     this.isPlaying.set(true);
-    const intervalMs = 1000 / (this.sampleRate() * this.playbackSpeed());
+
+    // Render at a reduced frame rate to match real-time display and reduce perceived speed
+    const renderHz = 30; // lower FPS gives smoother, realistic playback
+    const samplesPerTick = Math.max(
+      1,
+      Math.round((this.sampleRate() / renderHz) * this.playbackSpeed())
+    );
+    const intervalMs = 1000 / renderHz;
+
+    console.debug('[ECG] startSimulation', {
+      renderHz,
+      samplesPerTick,
+      sampleRate: this.sampleRate(),
+      playbackSpeed: this.playbackSpeed(),
+    });
+
     this.playbackSubscription = interval(intervalMs).subscribe(() => {
-      this.generateDataPoint();
+      this.generateDataPoints(samplesPerTick);
     });
   }
 
@@ -57,28 +73,62 @@ export class ECGDataService {
   }
 
   private generateDataPoint(): void {
-    this.wasmLoader.getModule().subscribe(module => {
-      if (!module) return;
+    // Backwards-compatible: generate a single sample
+    this.generateDataPoints(1);
+  }
 
-      const generator = new module.ECGGenerator(this.sampleRate(), 72);
-      const analyzer = new module.ECGAnalyzer(this.sampleRate());
+  private generateDataPoints(count: number): void {
+    console.debug('[ECG] generateDataPoints', {
+      count,
+      sampleRate: this.sampleRate(),
+      playbackSpeed: this.playbackSpeed(),
+    });
 
-      const samples = generator.generateSamples(1);
-      const analysis = analyzer.analyze(samples);
+    this.wasmLoader.getModule().subscribe((module) => {
+      if (!module) {
+        console.warn('[ECG] WASM module not loaded - skipping data generation');
+        return;
+      }
 
-      const dataPoint: ECGDataPoint = {
-        timestamp: Date.now(),
-        value: samples[0],
-        bpm: analysis.heartRate,
-        anomaly: analysis.detectedAnomaly !== 0 ? this.getAnomalyName(analysis.detectedAnomaly) : null
-      };
+      try {
+        const generator = new module.ECGGenerator(this.sampleRate(), 72);
+        const analyzer = new module.ECGAnalyzer(this.sampleRate());
 
-      this.dataBuffer.update(buffer => [...buffer, dataPoint]);
-      this.dataStream$.next(dataPoint);
+        // Request `count` contiguous samples and analyze them as a block
+        const samples = generator.generateSamples(count);
+        const analysis = analyzer.analyze(samples);
 
-      if (dataPoint.anomaly) {
-        this.anomalyDetected$.next(dataPoint.anomaly);
-        this.triggerAlert(dataPoint.anomaly);
+        // Spread timestamps over the samples so the chart has accurate sample timing
+        const now = Date.now();
+        const sampleIntervalMs = 1000 / this.sampleRate();
+        const baseTime = now - (count - 1) * sampleIntervalMs;
+
+        for (let i = 0; i < count; i++) {
+          const dataPoint: ECGDataPoint = {
+            timestamp: baseTime + i * sampleIntervalMs,
+            value: samples[i],
+            bpm: analysis.heartRate,
+            anomaly:
+              analysis.detectedAnomaly !== 0 ? this.getAnomalyName(analysis.detectedAnomaly) : null,
+          };
+
+          this.dataBuffer.update((buffer) => [...buffer, dataPoint]);
+          this.dataStream$.next(dataPoint);
+
+          if (dataPoint.anomaly) {
+            this.anomalyDetected$.next(dataPoint.anomaly);
+            this.triggerAlert(dataPoint.anomaly);
+          }
+        }
+
+        console.debug('[ECG] generated points', {
+          count,
+          firstSample: samples[0],
+          heartRate: analysis.heartRate,
+          detectedAnomaly: analysis.detectedAnomaly,
+        });
+      } catch (err) {
+        console.error('[ECG] error generating data points', err);
       }
     });
   }
@@ -88,16 +138,26 @@ export class ECGDataService {
     if (buffer.length === 0) {
       return { min: 0, max: 0, avg: 0, currentBPM: 0, anomalyCount: 0, lastAnomaly: null };
     }
-    const values = buffer.map(d => d.value);
-    const bpms = buffer.map(d => d.bpm);
-    const anomalies = buffer.filter(d => d.anomaly !== null);
+
+    // Compute statistics over a moving window (last `windowSeconds`) to reduce noise
+    const windowSeconds = 5; // average over last 5 seconds
+    const windowSamples = Math.max(1, Math.round(this.sampleRate() * windowSeconds));
+    const sliceStart = Math.max(0, buffer.length - windowSamples);
+    const window = buffer.slice(sliceStart);
+
+    const values = window.map((d) => d.value);
+    const bpms = window.map((d) => d.bpm);
+    const anomalies = window.filter((d) => d.anomaly !== null);
+
+    const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+
     return {
-      min: Math.min(...values),
-      max: Math.max(...values),
-      avg: values.reduce((a, b) => a + b, 0) / values.length,
-      currentBPM: bpms[bpms.length - 1] || 0,
+      min: values.length ? Math.min(...values) : 0,
+      max: values.length ? Math.max(...values) : 0,
+      avg,
+      currentBPM: bpms.length ? bpms[bpms.length - 1] : 0,
       anomalyCount: anomalies.length,
-      lastAnomaly: anomalies.length > 0 ? anomalies[anomalies.length - 1].anomaly : null
+      lastAnomaly: anomalies.length > 0 ? anomalies[anomalies.length - 1].anomaly : null,
     };
   }
 
@@ -112,7 +172,17 @@ export class ECGDataService {
   }
 
   private logAnomalyToBackend(anomaly: string): void {
-    // TODO: implement backend logging
+    const stats = this.statistics();
+    this.apiService
+      .logAnomaly(1, {
+        // patientId dinamik olmalı
+        anomaly_type: anomaly,
+        severity: this.getSeverity(anomaly),
+        confidence: 0.85,
+        timestamp: new Date().toISOString(),
+        bpm_at_detection: stats.currentBPM,
+      })
+      .subscribe();
   }
 
   clearBuffer(): void {
@@ -133,5 +203,16 @@ export class ECGDataService {
 
   getAnomalyStream(): Observable<string | null> {
     return this.anomalyDetected$.asObservable();
+  }
+
+  private getSeverity(anomaly: string): 'low' | 'medium' | 'high' {
+    const severityMap: Record<string, 'low' | 'medium' | 'high'> = {
+      TACHYCARDIA: 'high',
+      BRADYCARDIA: 'high',
+      AFIB: 'high',
+      PVC: 'medium',
+      NOISE_ARTIFACT: 'low',
+    };
+    return severityMap[anomaly] || 'medium';
   }
 }

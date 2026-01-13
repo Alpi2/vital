@@ -18,6 +18,23 @@ export class ApiService {
   
   constructor(private http: HttpClient) {}
   
+  // Generic HTTP methods
+  get<T>(endpoint: string): Observable<T> {
+    return this.http.get<T>(`${this.apiUrl}${endpoint}`);
+  }
+  
+  post<T>(endpoint: string, data: any): Observable<T> {
+    return this.http.post<T>(`${this.apiUrl}${endpoint}`, data);
+  }
+  
+  put<T>(endpoint: string, data: any): Observable<T> {
+    return this.http.put<T>(`${this.apiUrl}${endpoint}`, data);
+  }
+  
+  delete<T>(endpoint: string): Observable<T> {
+    return this.http.delete<T>(`${this.apiUrl}${endpoint}`);
+  }
+  
   logAnomaly(patientId: number, anomaly: Omit<AnomalyLog, 'patient_id'>): Observable<any> {
     const payload = {
       ...anomaly,
