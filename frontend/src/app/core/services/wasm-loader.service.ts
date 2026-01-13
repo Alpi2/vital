@@ -26,7 +26,9 @@ export class WasmLoaderService {
     try {
       // Dynamic runtime import: fetch module text then import via blob URL
       // This avoids Vite/optimizer trying to resolve the absolute '/assets/..' path at build time.
-      const modulePath = '/assets/wasm/vitalstream.js';
+      const modulePathBase = '/assets/wasm/vitalstream.js';
+      // Add a cache-busting query param during development so browsers don't keep an old stub
+      const modulePath = `${modulePathBase}?_=${Date.now()}`;
       let moduleFactory: any = null;
 
       try {
@@ -40,7 +42,7 @@ export class WasmLoaderService {
         URL.revokeObjectURL(blobUrl);
       } catch (fetchErr) {
         // Fallback: attempt runtime import directly (may still fail in dev optimizer)
-        const wasmMod = await import(/* @vite-ignore */ modulePath);
+        const wasmMod = await import(/* @vite-ignore */ modulePathBase);
         moduleFactory = wasmMod && wasmMod.default ? wasmMod.default : wasmMod;
       }
 

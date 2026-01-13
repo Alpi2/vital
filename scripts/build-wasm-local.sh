@@ -3,10 +3,10 @@ set -euo pipefail
 
 echo "Building VitalStream WebAssembly module..."
 
-# Build directory oluştur
+# Create build directory
 mkdir -p ../frontend/src/assets/wasm
 
-# C++ kodunu derle
+# Compile C++ code
 emcc \
     -O3 \
     -s WASM=1 \
@@ -21,9 +21,9 @@ emcc \
     -s ASSERTIONS=1 \
     --bind \
     -o ../frontend/src/assets/wasm/vitalstream.js \
-    core/src/bindings.cpp \
-    core/src/ecg_generator.cpp \
-    core/src/ecg_analyzer.cpp \
-    -Icore/include
+    ../core/src/bindings.cpp \
+    ../core/src/ecg_generator.cpp \
+    ../core/src/ecg_analyzer.cpp \
+    -I../core/include
 
 echo "Build completed! Output: frontend/src/assets/wasm/"
