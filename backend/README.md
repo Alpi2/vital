@@ -38,3 +38,19 @@ Run with:
 pip install fastapi uvicorn
 uvicorn app.main:app --reload
 ```
+
+---
+
+**Helper scripts** 🔧
+
+We provide a helper to (re)create the virtualenv, install requirements and run Alembic migrations:
+
+```bash
+# Recreate venv, install deps, and run migrations
+./backend/scripts/setup_venv.sh --recreate
+
+# Or run without recreation
+./backend/scripts/setup_venv.sh
+```
+
+This is useful on macOS where system Python can be managed by Homebrew and `pip` may be restricted; the script creates an isolated venv and ensures `alembic` is available before running `alembic upgrade head`.
