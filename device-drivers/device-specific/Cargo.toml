@@ -1,0 +1,33 @@
+[package]
+name = "device-specific"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vitalstream-device-drivers = { path = ".." }
+ble-driver = { path = "../ble-driver" }
+usb-driver = { path = "../usb-driver" }
+serial-driver = { path = "../serial-driver" }
+wifi-driver = { path = "../wifi-driver" }
+signal-processing = { path = "../signal-processing" }
+
+# Async
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# UUID
+uuid = { version = "1.6", features = ["v4"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
