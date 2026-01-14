@@ -33,12 +33,22 @@ export class ECGDataService {
   private anomalyDetected$ = new BehaviorSubject<string | null>(null);
 
   private playbackSubscription?: Subscription;
+  private wasmModule: any | null = null; // cached module reference
+  private wasmModuleSubscription?: Subscription;
 
   constructor(private wasmLoader: WasmLoaderService, private apiService: ApiService) {
+    // Maintain buffer size
     effect(() => {
       const buffer = this.dataBuffer();
       if (buffer.length > 1000) {
         this.dataBuffer.set(buffer.slice(-1000));
+      }
+    });
+
+    // Subscribe once to the WASM module and cache it for reuse to avoid per-tick subscriptions
+    this.wasmModuleSubscription = this.wasmLoader.getModule().subscribe((m) => {
+      if (m) {
+        this.wasmModule = m;
       }
     });
   }
@@ -84,53 +94,53 @@ export class ECGDataService {
       playbackSpeed: this.playbackSpeed(),
     });
 
-    this.wasmLoader.getModule().subscribe((module) => {
-      if (!module) {
-        console.warn('[ECG] WASM module not loaded - skipping data generation');
-        return;
-      }
+    // Use cached module reference to avoid creating subscriptions per tick
+    const module = this.wasmModule;
+    if (!module) {
+      console.warn('[ECG] WASM module not loaded - skipping data generation');
+      return;
+    }
 
-      try {
-        const generator = new module.ECGGenerator(this.sampleRate(), 72);
-        const analyzer = new module.ECGAnalyzer(this.sampleRate());
+    try {
+      const generator = new module.ECGGenerator(this.sampleRate(), 72);
+      const analyzer = new module.ECGAnalyzer(this.sampleRate());
 
-        // Request `count` contiguous samples and analyze them as a block
-        const samples = generator.generateSamples(count);
-        const analysis = analyzer.analyze(samples);
+      // Request `count` contiguous samples and analyze them as a block
+      const samples = generator.generateSamples(count);
+      const analysis = analyzer.analyze(samples);
 
-        // Spread timestamps over the samples so the chart has accurate sample timing
-        const now = Date.now();
-        const sampleIntervalMs = 1000 / this.sampleRate();
-        const baseTime = now - (count - 1) * sampleIntervalMs;
+      // Spread timestamps over the samples so the chart has accurate sample timing
+      const now = Date.now();
+      const sampleIntervalMs = 1000 / this.sampleRate();
+      const baseTime = now - (count - 1) * sampleIntervalMs;
 
-        for (let i = 0; i < count; i++) {
-          const dataPoint: ECGDataPoint = {
-            timestamp: baseTime + i * sampleIntervalMs,
-            value: samples[i],
-            bpm: analysis.heartRate,
-            anomaly:
-              analysis.detectedAnomaly !== 0 ? this.getAnomalyName(analysis.detectedAnomaly) : null,
-          };
+      for (let i = 0; i < count; i++) {
+        const dataPoint: ECGDataPoint = {
+          timestamp: baseTime + i * sampleIntervalMs,
+          value: samples[i],
+          bpm: analysis.heartRate,
+          anomaly:
+            analysis.detectedAnomaly !== 0 ? this.getAnomalyName(analysis.detectedAnomaly) : null,
+        };
 
-          this.dataBuffer.update((buffer) => [...buffer, dataPoint]);
-          this.dataStream$.next(dataPoint);
+        this.dataBuffer.update((buffer) => [...buffer, dataPoint]);
+        this.dataStream$.next(dataPoint);
 
-          if (dataPoint.anomaly) {
-            this.anomalyDetected$.next(dataPoint.anomaly);
-            this.triggerAlert(dataPoint.anomaly);
-          }
+        if (dataPoint.anomaly) {
+          this.anomalyDetected$.next(dataPoint.anomaly);
+          this.triggerAlert(dataPoint.anomaly);
         }
-
-        console.debug('[ECG] generated points', {
-          count,
-          firstSample: samples[0],
-          heartRate: analysis.heartRate,
-          detectedAnomaly: analysis.detectedAnomaly,
-        });
-      } catch (err) {
-        console.error('[ECG] error generating data points', err);
       }
-    });
+
+      console.debug('[ECG] generated points', {
+        count,
+        firstSample: samples[0],
+        heartRate: analysis.heartRate,
+        detectedAnomaly: analysis.detectedAnomaly,
+      });
+    } catch (err) {
+      console.error('[ECG] error generating data points', err);
+    }
   }
 
   private calculateStatistics(): ECGStatistics {
@@ -214,5 +224,11 @@ export class ECGDataService {
       NOISE_ARTIFACT: 'low',
     };
     return severityMap[anomaly] || 'medium';
+  }
+
+  // Cleanup subscriptions when the service is destroyed (if ever)
+  ngOnDestroy(): void {
+    this.playbackSubscription?.unsubscribe();
+    this.wasmModuleSubscription?.unsubscribe();
   }
 }
