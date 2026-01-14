@@ -5,10 +5,11 @@ import { catchError, shareReplay } from 'rxjs/operators';
 declare const Module: any;
 
 interface WasmModule {
-  ECGGenerator: new (sampleRate: number, bpm: number) => any;
-  ECGAnalyzer: new (sampleRate: number) => any;
-  AnalysisResult: any;
-  AnomalyType: any;
+  ECGGenerator?: new (sampleRate: number, bpm: number) => any;
+  ECGAnalyzer?: new (sampleRate: number) => any;
+  analyze_ecg?: (input: Float64Array, samplingRate: number) => any;
+  AnalysisResult?: any;
+  AnomalyType?: any;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -26,31 +27,39 @@ export class WasmLoaderService {
     try {
       // Dynamic runtime import: fetch module text then import via blob URL
       // This avoids Vite/optimizer trying to resolve the absolute '/assets/..' path at build time.
-      const modulePathBase = '/assets/wasm/vitalstream.js';
-      // Add a cache-busting query param during development so browsers don't keep an old stub
-      const modulePath = `${modulePathBase}?_=${Date.now()}`;
-      let moduleFactory: any = null;
+      // New wasm-pack generated module path
+      const pkgBase = '/assets/wasm/ecg_processor/pkg/ecg_processor.js';
+      const wasmBase = '/assets/wasm/ecg_processor/pkg/ecg_processor_bg.wasm';
 
+      // Try dynamic import via blob (avoid bundler resolving issues in dev)
+      let imported: any = null;
       try {
-        const resp = await fetch(modulePath);
-        if (!resp.ok) throw new Error(`WASM asset not found: ${resp.status}`);
+        const resp = await fetch(`${pkgBase}?_=${Date.now()}`);
+        if (!resp.ok) throw new Error(`WASM pkg not found: ${resp.status}`);
         const jsText = await resp.text();
         const blob = new Blob([jsText], { type: 'text/javascript' });
         const blobUrl = URL.createObjectURL(blob);
-        const wasmMod = await import(/* @vite-ignore */ blobUrl);
-        moduleFactory = wasmMod && wasmMod.default ? wasmMod.default : wasmMod;
+        imported = await import(/* @vite-ignore */ blobUrl);
         URL.revokeObjectURL(blobUrl);
-      } catch (fetchErr) {
-        // Fallback: attempt runtime import directly (may still fail in dev optimizer)
-        const wasmMod = await import(/* @vite-ignore */ modulePathBase);
-        moduleFactory = wasmMod && wasmMod.default ? wasmMod.default : wasmMod;
+      } catch (err) {
+        // fallback to direct import
+        imported = await import(/* @vite-ignore */ pkgBase);
       }
 
-      if (!moduleFactory) throw new Error('WASM module factory unavailable');
+      if (!imported) throw new Error('WASM package import failed');
 
-      const module = await moduleFactory({
-        locateFile: (path: string) => (path.endsWith('.wasm') ? `/assets/wasm/${path}` : path),
-      });
+      // wasm-pack web target exports an init default and named exports
+      const initFn = imported.default || imported.init || imported;
+      if (typeof initFn !== 'function') {
+        throw new Error('WASM package init function not found');
+      }
+
+      // Initialize with explicit wasm path
+      await initFn(wasmBase);
+
+      // Expose exports (ECGAnalyzer etc.)
+      const module = imported;
+
 
       this.wasmModule$.next(module as WasmModule);
       this.error.set(null);
