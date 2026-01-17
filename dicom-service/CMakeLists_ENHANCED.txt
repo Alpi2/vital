@@ -1,0 +1,329 @@
+cmake_minimum_required(VERSION 3.20)
+project(VitalStreamDICOMService VERSION 1.0.0 LANGUAGES CXX)
+
+# C++ Standard and Configuration
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Build type configuration
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+message(STATUS "Building VitalStream DICOM Service in ${CMAKE_BUILD_TYPE} mode")
+
+# Compiler options
+set(COMMON_FLAGS "-Wall -Wextra -Wpedantic")
+set(DEBUG_FLAGS "-g -O0 -DDEBUG")
+set(RELEASE_FLAGS "-O3 -DNDEBUG -march=native")
+
+# Find required packages
+find_package(Protobuf REQUIRED)
+find_package(gRPC REQUIRED)
+find_package(DCMTK REQUIRED)
+find_package(Boost REQUIRED COMPONENTS filesystem system thread)
+find_package(spdlog REQUIRED)
+find_package(OpenSSL REQUIRED)  # For mTLS support
+
+# Optional packages
+find_package(PostgreSQL)
+find_package(UUID REQUIRED)
+
+# Package status reporting
+if(DCMTK_FOUND)
+    message(STATUS "✅ DCMTK found: ${DCMTK_VERSION}")
+else()
+    message(FATAL_ERROR "❌ DCMTK not found - required for DICOM processing")
+endif()
+
+if(Protobuf_FOUND)
+    message(STATUS "✅ Protobuf found")
+else()
+    message(FATAL_ERROR "❌ Protobuf not found - required for gRPC")
+endif()
+
+if(gRPC_FOUND)
+    message(STATUS "✅ gRPC found")
+else()
+    message(FATAL_ERROR "❌ gRPC not found - required for service")
+endif()
+
+# Proto files configuration
+set(PROTO_FILES
+    ../protos/dicom/v1/dicom_service.proto
+    ../protos/common/v1/common.proto
+)
+
+# Generate protobuf and gRPC code (modern CMake approach)
+message(STATUS "🔧 Generating protobuf and gRPC code...")
+
+# Generate protobuf
+protobuf_generate(TARGET dicom_service
+    LANGUAGE cpp
+    IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../protos
+    PROTO_FILES ${PROTO_FILES}
+    GENERATE_EXTENSIONS .pb.h .pb.cc
+)
+
+# Generate gRPC
+grpc_generate(TARGET dicom_service
+    LANGUAGE cpp
+    IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../protos
+    PROTO_FILES ${PROTO_FILES}
+    GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+)
+
+# Source files
+set(SOURCES
+    src/main.cpp
+    src/dicom_service_impl.cpp
+    src/dicom_parser.cpp
+    src/waveform_extractor.cpp
+    src/storage_manager.cpp
+    src/audit_logger.cpp
+    src/health_service.cpp
+    ${PROTO_SRCS}
+    ${GRPC_SRCS}
+)
+
+# Header files
+set(HEADERS
+    include/dicom_service_impl.h
+    include/dicom_parser.h
+    include/waveform_extractor.h
+    include/storage_manager.h
+    include/audit_logger.h
+    include/health_service.h
+)
+
+# Create executable
+add_executable(dicom_service ${SOURCES} ${HEADERS})
+
+# Target-specific include directories
+target_include_directories(dicom_service
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_BINARY_DIR}
+        ${DCMTK_INCLUDE_DIRS}
+        ${Protobuf_INCLUDE_DIRS}
+        ${gRPC_INCLUDE_DIRS}
+)
+
+# Compiler-specific options
+target_compile_options(dicom_service
+    PRIVATE
+        ${COMMON_FLAGS}
+        $<$<CONFIG:Debug>:${DEBUG_FLAGS}>
+        $<$<CONFIG:Release>:${RELEASE_FLAGS}>
+)
+
+# Link libraries (modern CMake approach)
+target_link_libraries(dicom_service
+    PRIVATE
+        # Protobuf and gRPC
+        protobuf::libprotobuf
+        gRPC::grpc++
+        gRPC::grpc++_reflection
+        
+        # DICOM processing
+        ${DCMTK_LIBRARIES}
+        
+        # System libraries
+        Boost::filesystem
+        Boost::system
+        Boost::thread
+        
+        # Logging
+        spdlog::spdlog
+        
+        # Security
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        
+        # Utilities
+        ${CMAKE_DL_LIBS}
+        pthread
+)
+
+# Optional dependencies
+if(PostgreSQL_FOUND)
+    target_link_libraries(dicom_service PRIVATE PostgreSQL::PostgreSQL)
+    target_compile_definitions(dicom_service PRIVATE HAVE_POSTGRESQL)
+    message(STATUS "✅ PostgreSQL support enabled")
+endif()
+
+if(UUID_FOUND)
+    target_link_libraries(dicom_service PRIVATE ${UUID_LIBRARIES})
+    message(STATUS "✅ UUID support enabled")
+endif()
+
+# Platform-specific libraries
+if(UNIX AND NOT APPLE)
+    target_link_libraries(dicom_service PRIVATE rt)
+endif()
+
+# Installation configuration
+include(GNUInstallDirs)
+
+install(TARGETS dicom_service
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES ${HEADERS}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vitalstream/dicom
+)
+
+# Configuration files
+install(FILES config/dicom_service.yaml
+    DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/vitalstream
+)
+
+# Testing configuration
+enable_testing()
+
+# Add Google Test if available
+find_package(GTest QUIET)
+if(GTest_FOUND)
+    message(STATUS "✅ Google Test found - enabling unit tests")
+    
+    # Test executable
+    add_executable(dicom_service_tests
+        tests/test_main.cpp
+        tests/test_waveform_extractor.cpp
+        tests/test_dicom_parser.cpp
+        tests/test_storage_manager.cpp
+        ${PROTO_SRCS}
+        ${GRPC_SRCS}
+    )
+    
+    target_link_libraries(dicom_service_tests
+        PRIVATE
+            GTest::gtest
+            GTest::gtest_main
+            protobuf::libprotobuf
+            gRPC::grpc++
+            ${DCMTK_LIBRARIES}
+            spdlog::spdlog
+    )
+    
+    # Add test to CTest
+    add_test(NAME DICOMServiceUnitTests COMMAND dicom_service_tests)
+    
+    # Set test properties
+    set_tests_properties(DICOMServiceUnitTests PROPERTIES
+        TIMEOUT 300
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+else()
+    message(WARNING "⚠️ Google Test not found - unit tests disabled")
+endif()
+
+# Integration tests
+add_test(NAME DICOMServiceHealthCheck 
+         COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/tests/health_check.py)
+
+# Code coverage (Debug builds only)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    find_program(GCOV_PATH gcov)
+    find_program(LCOV_PATH lcov)
+    find_program(GENHTML_PATH genhtml)
+    
+    if(GCOV_PATH AND LCOV_PATH AND GENHTML_PATH)
+        message(STATUS "✅ Code coverage tools found - enabling coverage")
+        
+        # Add coverage flags
+        target_compile_options(dicom_service PRIVATE --coverage)
+        target_link_libraries(dicom_service PRIVATE --coverage)
+        
+        # Custom target for coverage report
+        add_custom_target(coverage
+            COMMAND ${LCOV_PATH} --directory . --capture --output-file coverage.info
+            COMMAND ${LCOV_PATH} --remove coverage.info '/usr/*' --output-file coverage.info
+            COMMAND ${GENHTML_PATH} -o coverage coverage.info
+            COMMAND ${LCOV_PATH} --directory . --zerocounters
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            COMMENT "Generating code coverage report"
+        )
+    endif()
+endif()
+
+# Documentation generation (optional)
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    message(STATUS "✅ Doxygen found - documentation can be generated")
+    
+    # Custom target for documentation
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+    )
+endif()
+
+# Packaging configuration
+include(CPack)
+
+set(CPACK_PACKAGE_NAME "VitalStream DICOM Service")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Medical-grade DICOM processing service")
+set(CPACK_PACKAGE_VENDOR "VitalStream Medical")
+set(CPACK_PACKAGE_CONTACT "support@vitalstream.medical")
+
+if(APPLE)
+    set(CPACK_GENERATOR "DragNDrop")
+elseif(UNIX)
+    set(CPACK_GENERATOR "DEB;RPM")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libdcmtk-dev, libgrpc++-dev, libprotobuf-dev")
+    set(CPACK_RPM_PACKAGE_REQUIRES "dcmtk-devel, grpc-devel, protobuf-devel")
+endif()
+
+# Development targets
+add_custom_target(run
+    COMMAND dicom_service --config ${CMAKE_CURRENT_SOURCE_DIR}/config/dicom_service.yaml
+    DEPENDS dicom_service
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running DICOM service in development mode"
+)
+
+# Formatting target (requires clang-format)
+find_program(CLANG_FORMAT_PATH clang-format)
+if(CLANG_FORMAT_PATH)
+    add_custom_target(format
+        COMMAND ${CLANG_FORMAT_PATH} -i ${SOURCES} ${HEADERS}
+        COMMENT "Formatting source code with clang-format"
+    )
+endif()
+
+# Static analysis target (requires clang-tidy)
+find_program(CLANG_TIDY_PATH clang-tidy)
+if(CLANG_TIDY_PATH)
+    add_custom_target(tidy
+        COMMAND ${CLANG_TIDY_PATH} ${SOURCES} -- -I${CMAKE_CURRENT_SOURCE_DIR}/include
+        COMMENT "Running static analysis with clang-tidy"
+    )
+endif()
+
+# Print configuration summary
+message(STATUS "")
+message(STATUS "🏥 VitalStream DICOM Service Configuration Summary:")
+message(STATUS "   Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "   C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "   Install Prefix: ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "   Source Directory: ${CMAKE_CURRENT_SOURCE_DIR}")
+message(STATUS "   Binary Directory: ${CMAKE_CURRENT_BINARY_DIR}")
+message(STATUS "")
+message(STATUS "📦 Dependencies:")
+message(STATUS "   DCMTK: ${DCMTK_VERSION} (${DCMTK_INCLUDE_DIRS})")
+message(STATUS "   Protobuf: ${Protobuf_VERSION}")
+message(STATUS "   gRPC: ${gRPC_VERSION}")
+message(STATUS "   Boost: ${Boost_VERSION}")
+message(STATUS "   spdlog: ${spdlog_VERSION}")
+message(STATUS "")
+message(STATUS "🔧 Features:")
+message(STATUS "   PostgreSQL: ${PostgreSQL_FOUND}")
+message(STATUS "   UUID Support: ${UUID_FOUND}")
+message(STATUS "   Unit Tests: ${GTEST_FOUND}")
+message(STATUS "   Code Coverage: ${GCOV_PATH AND LCOV_PATH}")
+message(STATUS "   Documentation: ${DOXYGEN_FOUND}")
+message(STATUS "")
