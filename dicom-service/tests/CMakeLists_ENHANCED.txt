@@ -1,0 +1,377 @@
+# Enhanced CMakeLists.txt for DICOM Service Testing
+cmake_minimum_required(VERSION 3.20)
+
+# Find required packages for testing
+find_package(GTest QUIET)
+find_package(Threads REQUIRED)
+
+# Enable testing
+enable_testing()
+
+# Test configuration
+set(TEST_OUTPUT_DIR ${CMAKE_BINARY_DIR}/test_output)
+file(MAKE_DIRECTORY ${TEST_OUTPUT_DIR})
+
+# Test data directory
+set(TEST_DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/test_data)
+file(MAKE_DIRECTORY ${TEST_DATA_DIR})
+
+# Waveform Extractor Tests
+if(GTest_FOUND)
+    add_executable(test_waveform_extractor
+        test_waveform_extractor.cpp
+        ../src/waveform_extractor.cpp
+        ../src/dicom_service_impl.cpp  # For dependencies
+    )
+    
+    target_include_directories(test_waveform_extractor
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${DCMTK_INCLUDE_DIRS}
+            ${Protobuf_INCLUDE_DIRS}
+            ${gRPC_INCLUDE_DIRS}
+    )
+    
+    target_link_libraries(test_waveform_extractor
+        PRIVATE
+            GTest::gtest
+            GTest::gtest_main
+            ${DCMTK_LIBRARIES}
+            protobuf::libprotobuf
+            gRPC::grpc++
+            spdlog::spdlog
+            Threads::Threads
+    )
+    
+    # Add test to CTest
+    add_test(NAME WaveformExtractorTest COMMAND test_waveform_extractor)
+    
+    # Set test properties
+    set_tests_properties(WaveformExtractorTest PROPERTIES
+        TIMEOUT 300
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        ENVIRONMENT "TEST_DATA_DIR=${TEST_DATA_DIR}"
+    )
+    
+    # Custom target to run waveform tests
+    add_custom_target(run_waveform_tests
+        COMMAND test_waveform_extractor
+        DEPENDS test_waveform_extractor
+        COMMENT "Running waveform extractor tests"
+    )
+    
+    message(STATUS "✅ Waveform extractor tests enabled")
+else()
+    message(WARNING "⚠️ Google Test not found - waveform tests disabled")
+endif()
+
+# Integration Tests (Python)
+find_package(Python3 COMPONENTS Interpreter QUIET)
+
+if(Python3_Interpreter_FOUND)
+    # Check if required Python packages are available
+    execute_process(
+        COMMAND ${Python3_Interpreter} -c "import grpc; import pytest"
+        RESULT_VARIABLE PYTHON_DEPS_CHECK
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
+    
+    if(PYTHON_DEPS_CHECK EQUAL 0)
+        # Add Python integration tests
+        add_test(NAME PythonIntegrationTests
+             COMMAND ${Python3_Interpreter} -m pytest 
+                 ${CMAKE_CURRENT_SOURCE_DIR}/../../backend/tests/test_dicom_integration.py
+                 -v
+                 --tb=short
+        )
+        
+        set_tests_properties(PythonIntegrationTests PROPERTIES
+            TIMEOUT 600
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        )
+        
+        # Custom target to run Python tests
+        add_custom_target(run_python_tests
+            COMMAND ${Python3_Interpreter} -m pytest 
+                ${CMAKE_CURRENT_SOURCE_DIR}/../../backend/tests/test_dicom_integration.py
+                -v
+            DEPENDS dicom_service
+            COMMENT "Running Python integration tests"
+        )
+        
+        message(STATUS "✅ Python integration tests enabled")
+    else()
+        message(WARNING "⚠️ Python dependencies not found - integration tests disabled")
+    endif()
+else()
+    message(WARNING "⚠️ Python3 not found - integration tests disabled")
+endif()
+
+# Performance Tests
+if(GTest_FOUND)
+    add_executable(test_performance
+        test_performance.cpp
+        ../src/dicom_service_impl.cpp
+        ../src/storage_manager.cpp
+        ../src/waveform_extractor.cpp
+    )
+    
+    target_include_directories(test_performance
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${DCMTK_INCLUDE_DIRS}
+            ${Protobuf_INCLUDE_DIRS}
+            ${gRPC_INCLUDE_DIRS}
+    )
+    
+    target_link_libraries(test_performance
+        PRIVATE
+            GTest::gtest
+            GTest::gtest_main
+            ${DCMTK_LIBRARIES}
+            protobuf::libprotobuf
+            gRPC::grpc++
+            spdlog::spdlog
+            Threads::Threads
+    )
+    
+    add_test(NAME PerformanceTest COMMAND test_performance)
+    set_tests_properties(PerformanceTest PROPERTIES
+        TIMEOUT 600
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    
+    add_custom_target(run_performance_tests
+        COMMAND test_performance
+        DEPENDS test_performance
+        COMMENT "Running performance tests"
+    )
+    
+    message(STATUS "✅ Performance tests enabled")
+endif()
+
+# DICOM Validation Tests
+if(GTest_FOUND AND DCMTK_FOUND)
+    add_executable(test_dicom_validation
+        test_dicom_validation.cpp
+        ../src/dicom_service_impl.cpp
+    )
+    
+    target_include_directories(test_dicom_validation
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${DCMTK_INCLUDE_DIRS}
+            ${Protobuf_INCLUDE_DIRS}
+            ${gRPC_INCLUDE_DIRS}
+    )
+    
+    target_link_libraries(test_dicom_validation
+        PRIVATE
+            GTest::gtest
+            GTest::gtest_main
+            ${DCMTK_LIBRARIES}
+            protobuf::libprotobuf
+            gRPC::grpc++
+            spdlog::spdlog
+            Threads::Threads
+    )
+    
+    add_test(NAME DICOMValidationTest COMMAND test_dicom_validation)
+    set_tests_properties(DICOMValidationTest PROPERTIES
+        TIMEOUT 300
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    
+    add_custom_target(run_dicom_validation_tests
+        COMMAND test_dicom_validation
+        DEPENDS test_dicom_validation
+        COMMENT "Running DICOM validation tests"
+    )
+    
+    message(STATUS "✅ DICOM validation tests enabled")
+endif()
+
+# Memory Leak Tests (Valgrind)
+find_program(VALGRIND_PATH valgrind)
+if(VALGRIND_PATH AND GTest_FOUND)
+    add_custom_target(run_memory_tests
+        COMMAND ${VALGRIND_PATH} --leak-check=full --show-leak-kinds=all 
+                --track-origins=yes --verbose --log-file=${TEST_OUTPUT_DIR}/valgrind.log
+                test_waveform_extractor
+        DEPENDS test_waveform_extractor
+        COMMENT "Running memory leak tests with Valgrind"
+    )
+    
+    message(STATUS "✅ Memory leak tests enabled (Valgrind)")
+else()
+    message(WARNING "⚠️ Valgrind not found - memory leak tests disabled")
+endif()
+
+# Code Coverage (Debug builds only)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND GTest_FOUND)
+    find_program(GCOV_PATH gcov)
+    find_program(LCOV_PATH lcov)
+    find_program(GENHTML_PATH genhtml)
+    
+    if(GCOV_PATH AND LCOV_PATH AND GENHTML_PATH)
+        # Add coverage flags to test executables
+        target_compile_options(test_waveform_extractor PRIVATE --coverage)
+        target_link_libraries(test_waveform_extractor PRIVATE --coverage)
+        
+        # Custom target for coverage report
+        add_custom_target(test_coverage
+            COMMAND ${LCOV_PATH} --directory . --capture --output-file coverage.info
+            COMMAND ${LCOV_PATH} --remove coverage.info '/usr/*' --output-file coverage.info
+            COMMAND ${GENHTML_PATH} -o ${TEST_OUTPUT_DIR}/coverage coverage.info
+            COMMAND ${LCOV_PATH} --directory . --zerocounters
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            COMMENT "Generating test coverage report"
+        )
+        
+        message(STATUS "✅ Code coverage enabled")
+    endif()
+endif()
+
+# Benchmark Tests
+if(GTest_FOUND)
+    add_executable(test_benchmarks
+        test_benchmarks.cpp
+        ../src/dicom_service_impl.cpp
+        ../src/storage_manager.cpp
+        ../src/waveform_extractor.cpp
+    )
+    
+    target_include_directories(test_benchmarks
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${DCMTK_INCLUDE_DIRS}
+            ${Protobuf_INCLUDE_DIRS}
+            ${gRPC_INCLUDE_DIRS}
+    )
+    
+    target_link_libraries(test_benchmarks
+        PRIVATE
+            GTest::gtest
+            GTest::gtest_main
+            ${DCMTK_LIBRARIES}
+            protobuf::libprotobuf
+            gRPC::grpc++
+            spdlog::spdlog
+            Threads::Threads
+    )
+    
+    add_custom_target(run_benchmarks
+        COMMAND test_benchmarks --benchmark_filter=.*
+        DEPENDS test_benchmarks
+        COMMENT "Running benchmark tests"
+    )
+    
+    message(STATUS "✅ Benchmark tests enabled")
+endif()
+
+# Stress Tests
+if(GTest_FOUND)
+    add_executable(test_stress
+        test_stress.cpp
+        ../src/dicom_service_impl.cpp
+        ../src/storage_manager.cpp
+    )
+    
+    target_include_directories(test_stress
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${DCMTK_INCLUDE_DIRS}
+            ${Protobuf_INCLUDE_DIRS}
+            ${gRPC_INCLUDE_DIRS}
+    )
+    
+    target_link_libraries(test_stress
+        PRIVATE
+            GTest::gtest
+            GTest::gtest_main
+            ${DCMTK_LIBRARIES}
+            protobuf::libprotobuf
+            gRPC::grpc++
+            spdlog::spdlog
+            Threads::Threads
+    )
+    
+    add_test(NAME StressTest COMMAND test_stress)
+    set_tests_properties(StressTest PROPERTIES
+        TIMEOUT 1800  # 30 minutes
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    
+    add_custom_target(run_stress_tests
+        COMMAND test_stress
+        DEPENDS test_stress
+        COMMENT "Running stress tests"
+    )
+    
+    message(STATUS "✅ Stress tests enabled")
+endif()
+
+# End-to-End Tests
+add_custom_target(run_e2e_tests
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target dicom_service
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_e2e_tests.sh
+    DEPENDS dicom_service
+    COMMENT "Running end-to-end tests"
+)
+
+# Test Data Generation
+add_custom_target(generate_test_data
+    COMMAND ${Python3_Interpreter} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_test_dicom.py
+        --output-dir ${TEST_DATA_DIR}
+        --count 10
+    COMMENT "Generating test DICOM files"
+)
+
+# Clean Test Output
+add_custom_target(clean_tests
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${TEST_OUTPUT_DIR}
+    COMMENT "Cleaning test output directory"
+)
+
+# Run All Tests
+add_custom_target(run_all_tests
+    COMMAND ${CMAKE_CTEST_COMMAND} --verbose
+    DEPENDS test_waveform_extractor
+    COMMENT "Running all tests"
+)
+
+# Test Summary
+add_custom_target(test_summary
+    COMMAND ${Python3_Interpreter} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_summary.py
+        --test-dir ${TEST_OUTPUT_DIR}
+    COMMENT "Generating test summary report"
+)
+
+# Print test configuration
+message(STATUS "")
+message(STATUS "🧪 DICOM Service Test Configuration:")
+message(STATUS "   Test Output Directory: ${TEST_OUTPUT_DIR}")
+message(STATUS "   Test Data Directory: ${TEST_DATA_DIR}")
+message(STATUS "   Google Test: ${GTest_FOUND}")
+message(STATUS "   Python3: ${Python3_Interpreter_FOUND}")
+message(STATUS "   Valgrind: ${VALGRIND_PATH}")
+message(STATUS "   Code Coverage: ${GCOV_PATH AND LCOV_PATH AND GENHTML_PATH}")
+message(STATUS "")
+message(STATUS "🎯 Available Test Targets:")
+message(STATUS "   run_waveform_tests      - Run waveform extractor tests")
+message(STATUS "   run_python_tests        - Run Python integration tests")
+message(STATUS "   run_performance_tests   - Run performance tests")
+message(STATUS "   run_dicom_validation_tests - Run DICOM validation tests")
+message(STATUS "   run_memory_tests        - Run memory leak tests")
+message(STATUS "   test_coverage           - Generate code coverage report")
+message(STATUS "   run_benchmarks          - Run benchmark tests")
+message(STATUS "   run_stress_tests        - Run stress tests")
+message(STATUS "   run_e2e_tests           - Run end-to-end tests")
+message(STATUS "   run_all_tests           - Run all tests")
+message(STATUS "")
