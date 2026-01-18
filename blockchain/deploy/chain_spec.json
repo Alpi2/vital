@@ -1,0 +1,208 @@
+{
+  "name": "VitalStream Medical Blockchain",
+  "id": "vitalstream-mainnet",
+  "chain_type": "Live",
+  "boot_nodes": [
+    "/ip4/10.0.1.10/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
+    "/ip4/10.0.1.11/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMuD",
+    "/ip4/10.0.1.12/tcp/30333/p2p/12D3KooWBmAwcd4PJNJvfV89HwE48nwkRmAgo8Vy3uQEyNNHBox2"
+  ],
+  "telemetry_endpoints": [
+    [
+      "/dns/telemetry.vitalstream.io/tcp/443/x-parity-wss/%2Fsubmit%2F",
+      0
+    ]
+  ],
+  "protocol_id": "vital",
+  "properties": {
+    "tokenDecimals": 18,
+    "tokenSymbol": "VITAL",
+    "ss58Format": 42
+  },
+  "consensus": {
+    "type": "proof_of_authority",
+    "min_validators": 3,
+    "consensus_threshold": 0.67,
+    "block_time_seconds": 6,
+    "epoch_duration_blocks": 2400
+  },
+  "genesis": {
+    "timestamp": 1704326400000,
+    "initial_validators": [
+      {
+        "id": "validator_hospital_a",
+        "public_key": "0x8eaf04151687736326c9fea17e25fc5287613693c912909cb226aa4794f26a48",
+        "stake": 10000000000000000000000,
+        "reputation": 100.0,
+        "metadata": {
+          "name": "Hospital A Validator",
+          "location": "US-EAST",
+          "organization": "Major Medical Center A"
+        }
+      },
+      {
+        "id": "validator_hospital_b",
+        "public_key": "0x90b5ab205c6974c9ea841be688864633dc9ca8a357843eeacf2314649965fe22",
+        "stake": 10000000000000000000000,
+        "reputation": 100.0,
+        "metadata": {
+          "name": "Hospital B Validator",
+          "location": "EU-WEST",
+          "organization": "European Medical Institute"
+        }
+      },
+      {
+        "id": "validator_research_c",
+        "public_key": "0x306721211d5404bd9da88e0204360a1a9ab8b87c66c1bc2fcdd37f3c2222cc20",
+        "stake": 10000000000000000000000,
+        "reputation": 100.0,
+        "metadata": {
+          "name": "Research Center C Validator",
+          "location": "ASIA-PACIFIC",
+          "organization": "Medical Research Institute C"
+        }
+      }
+    ],
+    "initial_balances": [
+      [
+        "0x8eaf04151687736326c9fea17e25fc5287613693c912909cb226aa4794f26a48",
+        100000000000000000000000
+      ],
+      [
+        "0x90b5ab205c6974c9ea841be688864633dc9ca8a357843eeacf2314649965fe22",
+        100000000000000000000000
+      ],
+      [
+        "0x306721211d5404bd9da88e0204360a1a9ab8b87c66c1bc2fcdd37f3c2222cc20",
+        100000000000000000000000
+      ]
+    ]
+  },
+  "runtime": {
+    "system": {
+      "version": "1.0.0",
+      "block_hash_count": 2400,
+      "db_weight": {
+        "read": 25000000,
+        "write": 100000000
+      }
+    },
+    "timestamp": {
+      "minimum_period": 3000
+    },
+    "balances": {
+      "existential_deposit": 1000000000000000
+    },
+    "transaction_payment": {
+      "transaction_byte_fee": 10000000000,
+      "weight_to_fee": [
+        {
+          "coefficient_integer": 1,
+          "coefficient_frac": 0,
+          "negative": false,
+          "degree": 1
+        }
+      ]
+    }
+  },
+  "smart_contracts": {
+    "enabled": true,
+    "gas_limit": 5000000000,
+    "max_code_size": 524288,
+    "deployed_contracts": [
+      {
+        "name": "PatientDataAccess",
+        "address": "0x1000000000000000000000000000000000000001",
+        "abi_hash": "0xabcd1234...",
+        "version": "1.0.0"
+      },
+      {
+        "name": "ResearchDataSharing",
+        "address": "0x1000000000000000000000000000000000000002",
+        "abi_hash": "0xef567890...",
+        "version": "1.0.0"
+      },
+      {
+        "name": "AuditLog",
+        "address": "0x1000000000000000000000000000000000000003",
+        "abi_hash": "0x12345678...",
+        "version": "1.0.0"
+      }
+    ]
+  },
+  "network": {
+    "listen_addresses": [
+      "/ip4/0.0.0.0/tcp/30333",
+      "/ip6/::/tcp/30333"
+    ],
+    "public_addresses": [],
+    "reserved_nodes": [],
+    "reserved_only": false,
+    "max_peers": 50,
+    "max_pending_peers": 25
+  },
+  "rpc": {
+    "http_enabled": true,
+    "http_port": 9933,
+    "ws_enabled": true,
+    "ws_port": 9944,
+    "ws_max_connections": 100,
+    "cors": [
+      "http://localhost:*",
+      "https://vitalstream.io"
+    ],
+    "methods": [
+      "author_submitExtrinsic",
+      "chain_getBlock",
+      "chain_getBlockHash",
+      "chain_getHeader",
+      "state_getStorage",
+      "state_call",
+      "system_health",
+      "system_name",
+      "system_version"
+    ]
+  },
+  "security": {
+    "encryption": {
+      "algorithm": "AES-256-GCM",
+      "key_derivation": "PBKDF2-SHA256",
+      "iterations": 100000
+    },
+    "quantum_resistant": {
+      "enabled": true,
+      "algorithm": "Kyber-512",
+      "hybrid_mode": true
+    },
+    "access_control": {
+      "rbac_enabled": true,
+      "roles": [
+        "admin",
+        "validator",
+        "researcher",
+        "clinician",
+        "patient"
+      ]
+    }
+  },
+  "storage": {
+    "backend": "rocksdb",
+    "path": "/var/lib/vitalstream/chains/mainnet/db",
+    "cache_size_mb": 1024,
+    "state_pruning": "archive",
+    "blocks_pruning": "archive"
+  },
+  "logging": {
+    "level": "info",
+    "targets": {
+      "runtime": "debug",
+      "consensus": "info",
+      "network": "warn",
+      "rpc": "info"
+    },
+    "output": [
+      "stdout",
+      "/var/log/vitalstream/node.log"
+    ]
+  }
+}

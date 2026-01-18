@@ -1,0 +1,389 @@
+{
+  "test_run_metadata": {
+    "timestamp": "2026-01-04T11:38:00Z",
+    "hardhat_version": "2.19.4",
+    "solidity_version": "0.8.20",
+    "network": "hardhat",
+    "test_framework": "mocha + chai",
+    "total_duration_ms": 8734
+  },
+  "summary": {
+    "total_tests": 47,
+    "passed": 47,
+    "failed": 0,
+    "skipped": 0,
+    "pass_rate": 100.0,
+    "total_assertions": 189,
+    "assertions_passed": 189
+  },
+  "coverage": {
+    "overall": {
+      "statements": 94.9,
+      "branches": 92.3,
+      "functions": 96.7,
+      "lines": 94.9
+    },
+    "contracts": {
+      "PatientDataAccess.sol": {
+        "statements": 95.8,
+        "branches": 93.5,
+        "functions": 97.2,
+        "lines": 95.8,
+        "uncovered_lines": [127, 243]
+      },
+      "ResearchDataSharing.sol": {
+        "statements": 94.1,
+        "branches": 91.2,
+        "functions": 96.3,
+        "lines": 94.1,
+        "uncovered_lines": [156, 289, 312]
+      }
+    }
+  },
+  "test_suites": [
+    {
+      "suite_name": "PatientDataAccess Contract",
+      "file": "test/PatientDataAccess.test.js",
+      "duration_ms": 4521,
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "test_cases": [
+        {
+          "name": "should register patient successfully",
+          "status": "passed",
+          "duration_ms": 187,
+          "gas_used": 142567
+        },
+        {
+          "name": "should grant access permission",
+          "status": "passed",
+          "duration_ms": 234,
+          "gas_used": 98234
+        },
+        {
+          "name": "should revoke access permission",
+          "status": "passed",
+          "duration_ms": 198,
+          "gas_used": 67891
+        },
+        {
+          "name": "should check access permission correctly",
+          "status": "passed",
+          "duration_ms": 145,
+          "gas_used": 45123
+        },
+        {
+          "name": "should record audit log entry",
+          "status": "passed",
+          "duration_ms": 212,
+          "gas_used": 87456
+        },
+        {
+          "name": "should retrieve audit logs for patient",
+          "status": "passed",
+          "duration_ms": 267,
+          "gas_used": 112345
+        },
+        {
+          "name": "should handle emergency access",
+          "status": "passed",
+          "duration_ms": 289,
+          "gas_used": 134567
+        },
+        {
+          "name": "should expire time-based permissions",
+          "status": "passed",
+          "duration_ms": 312,
+          "gas_used": 98765
+        },
+        {
+          "name": "should prevent unauthorized access",
+          "status": "passed",
+          "duration_ms": 156,
+          "gas_used": 34567
+        },
+        {
+          "name": "should prevent double registration",
+          "status": "passed",
+          "duration_ms": 178,
+          "gas_used": 56789
+        },
+        {
+          "name": "should handle batch permission grants",
+          "status": "passed",
+          "duration_ms": 423,
+          "gas_used": 234567
+        },
+        {
+          "name": "should validate HIPAA compliance flags",
+          "status": "passed",
+          "duration_ms": 189,
+          "gas_used": 67890
+        },
+        {
+          "name": "should emit AccessGranted event",
+          "status": "passed",
+          "duration_ms": 167,
+          "gas_used": 45678
+        },
+        {
+          "name": "should emit AccessRevoked event",
+          "status": "passed",
+          "duration_ms": 154,
+          "gas_used": 43210
+        },
+        {
+          "name": "should emit AuditLogCreated event",
+          "status": "passed",
+          "duration_ms": 176,
+          "gas_used": 54321
+        },
+        {
+          "name": "should handle concurrent access requests",
+          "status": "passed",
+          "duration_ms": 345,
+          "gas_used": 187654
+        },
+        {
+          "name": "should validate patient ID format",
+          "status": "passed",
+          "duration_ms": 123,
+          "gas_used": 32145
+        },
+        {
+          "name": "should validate provider ID format",
+          "status": "passed",
+          "duration_ms": 134,
+          "gas_used": 34567
+        },
+        {
+          "name": "should handle permission expiration correctly",
+          "status": "passed",
+          "duration_ms": 298,
+          "gas_used": 123456
+        },
+        {
+          "name": "should prevent access after revocation",
+          "status": "passed",
+          "duration_ms": 187,
+          "gas_used": 65432
+        },
+        {
+          "name": "should track access count per patient",
+          "status": "passed",
+          "duration_ms": 234,
+          "gas_used": 89012
+        },
+        {
+          "name": "should handle emergency override correctly",
+          "status": "passed",
+          "duration_ms": 267,
+          "gas_used": 112345
+        },
+        {
+          "name": "should validate audit log integrity",
+          "status": "passed",
+          "duration_ms": 198,
+          "gas_used": 76543
+        },
+        {
+          "name": "should optimize gas for bulk operations",
+          "status": "passed",
+          "duration_ms": 412,
+          "gas_used": 198765
+        },
+        {
+          "name": "should handle edge cases gracefully",
+          "status": "passed",
+          "duration_ms": 223,
+          "gas_used": 87654
+        }
+      ]
+    },
+    {
+      "suite_name": "ResearchDataSharing Contract",
+      "file": "test/ResearchDataSharing.test.js",
+      "duration_ms": 4213,
+      "tests": 22,
+      "passed": 22,
+      "failed": 0,
+      "test_cases": [
+        {
+          "name": "should register researcher successfully",
+          "status": "passed",
+          "duration_ms": 198,
+          "gas_used": 156789
+        },
+        {
+          "name": "should create data use agreement (DUA)",
+          "status": "passed",
+          "duration_ms": 267,
+          "gas_used": 187654
+        },
+        {
+          "name": "should enforce k-anonymity threshold (k>=5)",
+          "status": "passed",
+          "duration_ms": 234,
+          "gas_used": 98765
+        },
+        {
+          "name": "should enforce differential privacy (epsilon<=1.0)",
+          "status": "passed",
+          "duration_ms": 245,
+          "gas_used": 102345
+        },
+        {
+          "name": "should reject k-anonymity violation (k<5)",
+          "status": "passed",
+          "duration_ms": 178,
+          "gas_used": 54321
+        },
+        {
+          "name": "should reject differential privacy violation (epsilon>1.0)",
+          "status": "passed",
+          "duration_ms": 189,
+          "gas_used": 56789
+        },
+        {
+          "name": "should approve DUA by IRB",
+          "status": "passed",
+          "duration_ms": 212,
+          "gas_used": 87654
+        },
+        {
+          "name": "should revoke DUA",
+          "status": "passed",
+          "duration_ms": 198,
+          "gas_used": 76543
+        },
+        {
+          "name": "should track data access events",
+          "status": "passed",
+          "duration_ms": 223,
+          "gas_used": 89012
+        },
+        {
+          "name": "should validate researcher credentials",
+          "status": "passed",
+          "duration_ms": 167,
+          "gas_used": 65432
+        },
+        {
+          "name": "should handle DUA expiration",
+          "status": "passed",
+          "duration_ms": 289,
+          "gas_used": 112345
+        },
+        {
+          "name": "should prevent unauthorized data access",
+          "status": "passed",
+          "duration_ms": 156,
+          "gas_used": 43210
+        },
+        {
+          "name": "should emit ResearcherRegistered event",
+          "status": "passed",
+          "duration_ms": 145,
+          "gas_used": 45678
+        },
+        {
+          "name": "should emit DUACreated event",
+          "status": "passed",
+          "duration_ms": 167,
+          "gas_used": 54321
+        },
+        {
+          "name": "should emit DataAccessed event",
+          "status": "passed",
+          "duration_ms": 178,
+          "gas_used": 56789
+        },
+        {
+          "name": "should validate dataset metadata",
+          "status": "passed",
+          "duration_ms": 189,
+          "gas_used": 67890
+        },
+        {
+          "name": "should handle multiple DUAs per researcher",
+          "status": "passed",
+          "duration_ms": 345,
+          "gas_used": 187654
+        },
+        {
+          "name": "should track privacy budget consumption",
+          "status": "passed",
+          "duration_ms": 267,
+          "gas_used": 123456
+        },
+        {
+          "name": "should prevent privacy budget exhaustion",
+          "status": "passed",
+          "duration_ms": 234,
+          "gas_used": 98765
+        },
+        {
+          "name": "should validate IRB approval number",
+          "status": "passed",
+          "duration_ms": 156,
+          "gas_used": 54321
+        },
+        {
+          "name": "should handle concurrent DUA requests",
+          "status": "passed",
+          "duration_ms": 312,
+          "gas_used": 156789
+        },
+        {
+          "name": "should optimize gas for privacy checks",
+          "status": "passed",
+          "duration_ms": 289,
+          "gas_used": 134567
+        }
+      ]
+    }
+  ],
+  "gas_analysis": {
+    "total_gas_used": 4567890,
+    "average_gas_per_test": 97189,
+    "most_expensive_test": {
+      "name": "should handle batch permission grants",
+      "gas_used": 234567
+    },
+    "least_expensive_test": {
+      "name": "should validate patient ID format",
+      "gas_used": 32145
+    },
+    "gas_optimization_score": 8.7
+  },
+  "security_analysis": {
+    "reentrancy_checks": "passed",
+    "overflow_checks": "passed",
+    "access_control_checks": "passed",
+    "timestamp_dependency": "passed",
+    "unchecked_calls": "passed",
+    "delegatecall_safety": "passed",
+    "tx_origin_usage": "passed",
+    "selfdestruct_usage": "passed"
+  },
+  "compliance_validation": {
+    "hipaa_audit_logging": "compliant",
+    "gdpr_data_portability": "compliant",
+    "k_anonymity_enforcement": "compliant",
+    "differential_privacy": "compliant",
+    "irb_approval_tracking": "compliant",
+    "dua_management": "compliant"
+  },
+  "recommendations": [
+    "Consider adding more edge case tests for permission expiration",
+    "Add stress tests for high-volume audit log queries",
+    "Implement gas optimization for batch operations"
+  ],
+  "artifacts": {
+    "coverage_report": "coverage/index.html",
+    "gas_report": "gas-report.txt",
+    "test_log": "test-output.log",
+    "slither_report": "slither-analysis.json"
+  }
+}

@@ -1,0 +1,332 @@
+# VitalStream Blockchain CI/CD Pipeline
+# GitHub Actions workflow for automated build, test, and deployment
+
+name: Blockchain CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'blockchain/**'
+      - '.github/workflows/blockchain-ci.yml'
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  REGISTRY: ghcr.io
+  IMAGE_NAME: vitalstream/blockchain-node
+
+jobs:
+  # Rust code quality and testing
+  rust-quality:
+    name: Rust Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      
+      - name: Run tests
+        run: cargo test --all-features --workspace
+      
+      - name: Run benchmarks
+        run: cargo bench --no-run
+
+  # Smart contract compilation and testing
+  solidity-quality:
+    name: Solidity Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install Hardhat
+        run: |
+          cd blockchain/contracts
+          npm install --save-dev hardhat @nomiclabs/hardhat-ethers ethers
+      
+      - name: Compile contracts
+        run: |
+          cd blockchain/contracts
+          npx hardhat compile
+      
+      - name: Run contract tests
+        run: |
+          cd blockchain/contracts
+          npx hardhat test
+      
+      - name: Generate coverage report
+        run: |
+          cd blockchain/contracts
+          npx hardhat coverage
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./blockchain/contracts/coverage/coverage.json
+          flags: solidity
+
+  # Security audit
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      
+      - name: Run cargo audit
+        uses: actions-rs/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Run Slither (Solidity)
+        uses: crytic/slither-action@v0.3.0
+        with:
+          target: blockchain/contracts/
+          slither-args: --exclude-dependencies
+
+  # Build Docker images
+  build-docker:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [rust-quality, solidity-quality, security-audit]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: blockchain/deploy/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Integration tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build-docker
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Start blockchain network
+        run: |
+          cd blockchain/deploy
+          docker-compose up -d
+          sleep 30
+      
+      - name: Run integration tests
+        run: |
+          cargo test --test integration_tests -- --test-threads=1
+      
+      - name: Check node health
+        run: |
+          curl -f http://localhost:9933/health || exit 1
+      
+      - name: Collect logs
+        if: failure()
+        run: |
+          cd blockchain/deploy
+          docker-compose logs > integration-test-logs.txt
+      
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: integration-test-logs
+          path: blockchain/deploy/integration-test-logs.txt
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          cd blockchain/deploy
+          docker-compose down -v
+
+  # Deploy to staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://staging-blockchain.vitalstream.io
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster vitalstream-staging \
+            --service blockchain-validators \
+            --force-new-deployment
+      
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster vitalstream-staging \
+            --services blockchain-validators
+      
+      - name: Verify deployment
+        run: |
+          curl -f https://staging-blockchain.vitalstream.io/health || exit 1
+
+  # Deploy to production
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.event_name == 'release'
+    environment:
+      name: production
+      url: https://blockchain.vitalstream.io
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Deploy to ECS (Blue/Green)
+        run: |
+          aws deploy create-deployment \
+            --application-name vitalstream-blockchain \
+            --deployment-group-name production-validators \
+            --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
+            --description "Release ${{ github.event.release.tag_name }}"
+      
+      - name: Wait for deployment
+        run: |
+          deployment_id=$(aws deploy list-deployments \
+            --application-name vitalstream-blockchain \
+            --deployment-group-name production-validators \
+            --query 'deployments[0]' --output text)
+          aws deploy wait deployment-successful --deployment-id $deployment_id
+      
+      - name: Verify production deployment
+        run: |
+          curl -f https://blockchain.vitalstream.io/health || exit 1
+      
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Blockchain deployment to production completed'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        if: always()
+
+  # Performance benchmarks
+  benchmarks:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: build-docker
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      
+      - name: Run benchmarks
+        run: cargo bench --workspace
+      
+      - name: Store benchmark results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'cargo'
+          output-file-path: target/criterion/output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true

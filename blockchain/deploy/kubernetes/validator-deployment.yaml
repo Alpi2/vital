@@ -1,0 +1,282 @@
+# Kubernetes deployment for VitalStream Blockchain Validators
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vitalstream-blockchain
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chain-spec
+  namespace: vitalstream-blockchain
+data:
+  chain_spec.json: |
+    # Chain spec content here (from chain_spec.json)
+---
+# PRODUCTION FIX: Use SealedSecrets or External Secrets Operator
+# This is a template - actual secrets should be managed via:
+# 1. Sealed Secrets (bitnami-labs/sealed-secrets)
+# 2. External Secrets Operator (external-secrets/external-secrets)
+# 3. HashiCorp Vault
+# 4. AWS Secrets Manager
+# 5. Azure Key Vault
+
+# Example using SealedSecret (recommended for production)
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: validator-keys
+  namespace: vitalstream-blockchain
+spec:
+  encryptedData:
+    # These are encrypted with the cluster's public key
+    # Generate using: kubeseal --format=yaml < secret.yaml > sealed-secret.yaml
+    validator1-key.json: AgBxK8... # Encrypted by kubeseal
+    validator2-key.json: AgCyL9... # Encrypted by kubeseal
+    validator3-key.json: AgDzM0... # Encrypted by kubeseal
+  template:
+    metadata:
+      name: validator-keys
+      namespace: vitalstream-blockchain
+    type: Opaque
+---
+# Alternative: External Secrets Operator with AWS Secrets Manager
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: validator-keys-external
+  namespace: vitalstream-blockchain
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: SecretStore
+  target:
+    name: validator-keys
+    creationPolicy: Owner
+  data:
+    - secretKey: validator1-key.json
+      remoteRef:
+        key: vitalstream/blockchain/validator1
+    - secretKey: validator2-key.json
+      remoteRef:
+        key: vitalstream/blockchain/validator2
+    - secretKey: validator3-key.json
+      remoteRef:
+        key: vitalstream/blockchain/validator3
+---
+# SecretStore configuration for AWS
+apiVersion: external-secrets.io/v1beta1
+kind: SecretStore
+metadata:
+  name: aws-secrets-manager
+  namespace: vitalstream-blockchain
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+      auth:
+        jwt:
+          serviceAccountRef:
+            name: external-secrets-sa
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: validator1-data
+  namespace: vitalstream-blockchain
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: validator-1
+  namespace: vitalstream-blockchain
+spec:
+  serviceName: validator-1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blockchain-validator
+      instance: validator-1
+  template:
+    metadata:
+      labels:
+        app: blockchain-validator
+        instance: validator-1
+    spec:
+      containers:
+      - name: validator
+        image: ghcr.io/vitalstream/blockchain-node:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 30333
+          name: p2p
+          protocol: TCP
+        - containerPort: 9933
+          name: rpc
+          protocol: TCP
+        - containerPort: 9944
+          name: ws
+          protocol: TCP
+        - containerPort: 9615
+          name: prometheus
+          protocol: TCP
+        env:
+        - name: NODE_TYPE
+          value: "validator"
+        - name: VALIDATOR_ID
+          value: "validator_hospital_a"
+        - name: RUST_LOG
+          value: "info,runtime=debug"
+        args:
+        - "--validator"
+        - "--name"
+        - "Hospital A Validator"
+        - "--chain"
+        - "/etc/vitalstream/chain_spec.json"
+        - "--base-path"
+        - "/var/lib/vitalstream"
+        - "--port"
+        - "30333"
+        - "--rpc-port"
+        - "9933"
+        - "--ws-port"
+        - "9944"
+        - "--rpc-cors"
+        - "all"
+        - "--rpc-methods"
+        - "Safe"
+        - "--prometheus-external"
+        - "--prometheus-port"
+        - "9615"
+        volumeMounts:
+        - name: chain-data
+          mountPath: /var/lib/vitalstream
+        - name: chain-spec
+          mountPath: /etc/vitalstream
+          readOnly: true
+        - name: validator-key
+          mountPath: /etc/vitalstream/keys
+          readOnly: true
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9933
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9933
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: chain-spec
+        configMap:
+          name: chain-spec
+      - name: validator-key
+        secret:
+          secretName: validator-keys
+          items:
+          - key: validator1-key.json
+            path: validator-key.json
+  volumeClaimTemplates:
+  - metadata:
+      name: chain-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: validator-1
+  namespace: vitalstream-blockchain
+spec:
+  type: LoadBalancer
+  selector:
+    app: blockchain-validator
+    instance: validator-1
+  ports:
+  - name: p2p
+    port: 30333
+    targetPort: 30333
+    protocol: TCP
+  - name: rpc
+    port: 9933
+    targetPort: 9933
+    protocol: TCP
+  - name: ws
+    port: 9944
+    targetPort: 9944
+    protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: blockchain-validators
+  namespace: vitalstream-blockchain
+spec:
+  selector:
+    matchLabels:
+      app: blockchain-validator
+  endpoints:
+  - port: prometheus
+    interval: 30s
+    path: /metrics
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: validator-hpa
+  namespace: vitalstream-blockchain
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: validator-1
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: validator-pdb
+  namespace: vitalstream-blockchain
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: blockchain-validator

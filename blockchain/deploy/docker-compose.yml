@@ -1,0 +1,211 @@
+version: '3.8'
+
+services:
+  # Validator Node 1
+  validator-1:
+    image: vitalstream/blockchain-node:latest
+    container_name: vital-validator-1
+    hostname: validator-1
+    ports:
+      - "30333:30333"  # P2P
+      - "9933:9933"    # HTTP RPC
+      - "9944:9944"    # WebSocket RPC
+    volumes:
+      - validator1-data:/var/lib/vitalstream
+      - ./chain_spec.json:/etc/vitalstream/chain_spec.json:ro
+      - ./validator1-key.json:/etc/vitalstream/validator-key.json:ro
+    environment:
+      - NODE_TYPE=validator
+      - VALIDATOR_ID=validator_hospital_a
+      - RUST_LOG=info,runtime=debug
+      - CHAIN_SPEC=/etc/vitalstream/chain_spec.json
+      - VALIDATOR_KEY=/etc/vitalstream/validator-key.json
+    command: >
+      --validator
+      --name "Hospital A Validator"
+      --chain /etc/vitalstream/chain_spec.json
+      --base-path /var/lib/vitalstream
+      --port 30333
+      --rpc-port 9933
+      --ws-port 9944
+      --rpc-cors all
+      --rpc-methods Safe
+      --prometheus-external
+    networks:
+      - vitalstream-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9933/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Validator Node 2
+  validator-2:
+    image: vitalstream/blockchain-node:latest
+    container_name: vital-validator-2
+    hostname: validator-2
+    ports:
+      - "30334:30333"
+      - "9934:9933"
+      - "9945:9944"
+    volumes:
+      - validator2-data:/var/lib/vitalstream
+      - ./chain_spec.json:/etc/vitalstream/chain_spec.json:ro
+      - ./validator2-key.json:/etc/vitalstream/validator-key.json:ro
+    environment:
+      - NODE_TYPE=validator
+      - VALIDATOR_ID=validator_hospital_b
+      - RUST_LOG=info,runtime=debug
+      - CHAIN_SPEC=/etc/vitalstream/chain_spec.json
+      - VALIDATOR_KEY=/etc/vitalstream/validator-key.json
+    command: >
+      --validator
+      --name "Hospital B Validator"
+      --chain /etc/vitalstream/chain_spec.json
+      --base-path /var/lib/vitalstream
+      --port 30333
+      --rpc-port 9933
+      --ws-port 9944
+      --rpc-cors all
+      --rpc-methods Safe
+      --bootnodes /dns4/validator-1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp
+    networks:
+      - vitalstream-network
+    restart: unless-stopped
+    depends_on:
+      - validator-1
+
+  # Validator Node 3
+  validator-3:
+    image: vitalstream/blockchain-node:latest
+    container_name: vital-validator-3
+    hostname: validator-3
+    ports:
+      - "30335:30333"
+      - "9935:9933"
+      - "9946:9944"
+    volumes:
+      - validator3-data:/var/lib/vitalstream
+      - ./chain_spec.json:/etc/vitalstream/chain_spec.json:ro
+      - ./validator3-key.json:/etc/vitalstream/validator-key.json:ro
+    environment:
+      - NODE_TYPE=validator
+      - VALIDATOR_ID=validator_research_c
+      - RUST_LOG=info,runtime=debug
+      - CHAIN_SPEC=/etc/vitalstream/chain_spec.json
+      - VALIDATOR_KEY=/etc/vitalstream/validator-key.json
+    command: >
+      --validator
+      --name "Research Center C Validator"
+      --chain /etc/vitalstream/chain_spec.json
+      --base-path /var/lib/vitalstream
+      --port 30333
+      --rpc-port 9933
+      --ws-port 9944
+      --rpc-cors all
+      --rpc-methods Safe
+      --bootnodes /dns4/validator-1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp
+    networks:
+      - vitalstream-network
+    restart: unless-stopped
+    depends_on:
+      - validator-1
+
+  # Full Node (Archive)
+  archive-node:
+    image: vitalstream/blockchain-node:latest
+    container_name: vital-archive
+    hostname: archive-node
+    ports:
+      - "30336:30333"
+      - "9936:9933"
+      - "9947:9944"
+    volumes:
+      - archive-data:/var/lib/vitalstream
+      - ./chain_spec.json:/etc/vitalstream/chain_spec.json:ro
+    environment:
+      - NODE_TYPE=full
+      - RUST_LOG=info
+      - CHAIN_SPEC=/etc/vitalstream/chain_spec.json
+    command: >
+      --name "Archive Node"
+      --chain /etc/vitalstream/chain_spec.json
+      --base-path /var/lib/vitalstream
+      --port 30333
+      --rpc-port 9933
+      --ws-port 9944
+      --rpc-cors all
+      --rpc-methods Safe
+      --pruning archive
+      --bootnodes /dns4/validator-1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp
+    networks:
+      - vitalstream-network
+    restart: unless-stopped
+    depends_on:
+      - validator-1
+
+  # Monitoring - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vital-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - vitalstream-network
+    restart: unless-stopped
+
+  # Monitoring - Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vital-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - vitalstream-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  # Block Explorer
+  explorer:
+    image: vitalstream/block-explorer:latest
+    container_name: vital-explorer
+    ports:
+      - "8080:80"
+    environment:
+      - WS_URL=ws://archive-node:9944
+      - CHAIN_NAME=VitalStream Medical Blockchain
+    networks:
+      - vitalstream-network
+    restart: unless-stopped
+    depends_on:
+      - archive-node
+
+networks:
+  vitalstream-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  validator1-data:
+  validator2-data:
+  validator3-data:
+  archive-data:
+  prometheus-data:
+  grafana-data:
