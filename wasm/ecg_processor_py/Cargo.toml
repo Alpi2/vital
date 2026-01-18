@@ -1,0 +1,64 @@
+[package]
+name = "ecg-processor-py"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance ECG processing for VitalStream with Python bindings"
+license = "MIT"
+authors = ["VitalStream Team"]
+
+[lib]
+name = "ecg_processor_py"
+crate-type = ["cdylib"]  # For PyO3
+
+[dependencies]
+# PyO3 with latest features
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py38", "generate-import-lib"] }
+pyo3-asyncio = { version = "0.22", features = ["tokio-runtime"] }
+
+# NumPy integration with zero-copy support
+numpy = "0.22"
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Serialization for efficient data transfer
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+
+# Performance optimizations
+rayon = "1.8"  # Parallel processing
+
+# SIMD optimizations
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+core_arch = "0.1"
+
+# ECG processing (existing library)
+ecg-processor = { path = "../ecg_processor" }
+
+[build-dependencies]
+pyo3-build-config = "0.22"
+
+# Ferrocene toolchain for medical compliance
+[toolchain]
+channel = "ferrocene"
+components = ["rustc", "cargo", "clippy", "rustfmt"]
+
+# Performance profiles
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.release.package."*"]
+opt-level = 3
+
+# Development profile
+[profile.dev]
+opt-level = 1
+debug = true
+panic = "unwind"
