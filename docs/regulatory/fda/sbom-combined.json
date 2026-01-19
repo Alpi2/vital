@@ -1,0 +1,483 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.4",
+  "serialNumber": "urn:uuid:550e8400-e29b-41d4-a716-446655440000",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-01-18T19:07:00.000Z",
+    "tools": [
+      {
+        "name": "pip-licenses",
+        "version": "5.5.0"
+      },
+      {
+        "name": "cyclonedx-npm",
+        "version": "1.0.0"
+      },
+      {
+        "name": "cargo-sbom",
+        "version": "0.10.0"
+      }
+    ],
+    "component": {
+      "name": "VitalStream",
+      "version": "1.0.0",
+      "type": "medical-device",
+      "supplier": {
+        "name": "VitalStream Medical Technologies",
+        "url": "https://vitalstream.com"
+      }
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "python-fastapi",
+      "name": "fastapi",
+      "version": "0.104.1",
+      "supplier": {
+        "name": "Sebastián Ramírez"
+      },
+      "licenses": [
+        {
+          "license": "MIT"
+        }
+      ],
+      "purl": "pkg:pypi/fastapi@0.104.1",
+      "properties": [
+        {
+          "name": "category",
+          "value": "web-framework"
+        },
+        {
+          "name": "security-level",
+          "value": "medium"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "python-sqlalchemy",
+      "name": "sqlalchemy",
+      "version": "2.0.23",
+      "supplier": {
+        "name": "SQLAlchemy Authors"
+      },
+      "licenses": [
+        {
+          "license": "MIT"
+        }
+      ],
+      "purl": "pkg:pypi/sqlalchemy@2.0.23",
+      "properties": [
+        {
+          "name": "category",
+          "value": "database-orm"
+        },
+        {
+          "name": "security-level",
+          "value": "medium"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "python-pydantic",
+      "name": "pydantic",
+      "version": "2.5.0",
+      "supplier": {
+        "name": "Samuel Colvin"
+      },
+      "licenses": [
+        {
+          "license": "MIT"
+        }
+      ],
+      "purl": "pkg:pypi/pydantic@2.5.0",
+      "properties": [
+        {
+          "name": "category",
+          "value": "data-validation"
+        },
+        {
+          "name": "security-level",
+          "value": "medium"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "python-cryptography",
+      "name": "cryptography",
+      "version": "41.0.7",
+      "supplier": {
+        "name": "Cryptography Developers"
+      },
+      "licenses": [
+        {
+          "license": "Apache-2.0"
+        }
+      ],
+      "purl": "pkg:pypi/cryptography@41.0.7",
+      "properties": [
+        {
+          "name": "category",
+          "value": "security"
+        },
+        {
+          "name": "security-level",
+          "value": "high"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "python-redis",
+      "name": "redis",
+      "version": "5.0.1",
+      "supplier": {
+        "name": "Redis Labs"
+      },
+      "licenses": [
+        {
+          "license": "MIT"
+        }
+      ],
+      "purl": "pkg:pypi/redis@5.0.1",
+      "properties": [
+        {
+          "name": "category",
+          "value": "database-cache"
+        },
+        {
+          "name": "security-level",
+          "value": "medium"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "python-numpy",
+      "name": "numpy",
+      "version": "1.25.2",
+      "supplier": {
+        "name": "NumPy Developers"
+      },
+      "licenses": [
+        {
+          "license": "BSD-3-Clause"
+        }
+      ],
+      "purl": "pkg:pypi/numpy@1.25.2",
+      "properties": [
+        {
+          "name": "category",
+          "value": "scientific-computing"
+        },
+        {
+          "name": "security-level",
+          "value": "low"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "python-scipy",
+      "name": "scipy",
+      "version": "1.11.4",
+      "supplier": {
+        "name": "SciPy Developers"
+      },
+      "licenses": [
+        {
+          "license": "BSD-3-Clause"
+        }
+      ],
+      "purl": "pkg:pypi/scipy@1.11.4",
+      "properties": [
+        {
+          "name": "category",
+          "value": "scientific-computing"
+        },
+        {
+          "name": "security-level",
+          "value": "low"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "python-torch",
+      "name": "torch",
+      "version": "2.1.1",
+      "supplier": {
+        "name": "PyTorch Team"
+      },
+      "licenses": [
+        {
+          "license": "BSD-3-Clause"
+        }
+      ],
+      "purl": "pkg:pypi/torch@2.1.1",
+      "properties": [
+        {
+          "name": "category",
+          "value": "machine-learning"
+        },
+        {
+          "name": "security-level",
+          "value": "medium"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "python-pydicom",
+      "name": "pydicom",
+      "version": "2.4.4",
+      "supplier": {
+        "name": "PyDicom Contributors"
+      },
+      "licenses": [
+        {
+          "license": "MIT"
+        }
+      ],
+      "purl": "pkg:pypi/pydicom@2.4.4",
+      "properties": [
+        {
+          "name": "category",
+          "value": "medical-imaging"
+        },
+        {
+          "name": "security-level",
+          "value": "medium"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "frontend-angular",
+      "name": "@angular/core",
+      "version": "17.2.0",
+      "supplier": {
+        "name": "Google"
+      },
+      "licenses": [
+        {
+          "license": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@angular/core@17.2.0",
+      "properties": [
+        {
+          "name": "category",
+          "value": "frontend-framework"
+        },
+        {
+          "name": "security-level",
+          "value": "medium"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "frontend-rxjs",
+      "name": "rxjs",
+      "version": "7.8.1",
+      "supplier": {
+        "name": "RxJS Contributors"
+      },
+      "licenses": [
+        {
+          "license": "Apache-2.0"
+        }
+      ],
+      "purl": "pkg:npm/rxjs@7.8.1",
+      "properties": [
+        {
+          "name": "category",
+          "value": "reactive-programming"
+        },
+        {
+          "name": "security-level",
+          "value": "low"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "rust-wasm-bindgen",
+      "name": "wasm-bindgen",
+      "version": "0.2",
+      "supplier": {
+        "name": "Rust WebAssembly Working Group"
+      },
+      "licenses": [
+        {
+          "license": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/wasm-bindgen@0.2",
+      "properties": [
+        {
+          "name": "category",
+          "value": "webassembly"
+        },
+        {
+          "name": "security-level",
+          "value": "medium"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "rust-serde",
+      "name": "serde",
+      "version": "1.0",
+      "supplier": {
+        "name": "Serde Contributors"
+      },
+      "licenses": [
+        {
+          "license": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/serde@1.0",
+      "properties": [
+        {
+          "name": "category",
+          "value": "serialization"
+        },
+        {
+          "name": "security-level",
+          "value": "low"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "rust-serde-wasm-bindgen",
+      "name": "serde-wasm-bindgen",
+      "version": "0.5",
+      "supplier": {
+        "name": "Rust WebAssembly Working Group"
+      },
+      "licenses": [
+        {
+          "license": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/serde-wasm-bindgen@0.5",
+      "properties": [
+        {
+          "name": "category",
+          "value": "webassembly"
+        },
+        {
+          "name": "security-level",
+          "value": "medium"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "python-fastapi",
+      "dependsOn": [
+        "python-pydantic",
+        "python-cryptography"
+      ]
+    },
+    {
+      "ref": "python-sqlalchemy",
+      "dependsOn": []
+    },
+    {
+      "ref": "python-pydantic",
+      "dependsOn": []
+    },
+    {
+      "ref": "python-cryptography",
+      "dependsOn": []
+    },
+    {
+      "ref": "python-redis",
+      "dependsOn": []
+    },
+    {
+      "ref": "python-numpy",
+      "dependsOn": []
+    },
+    {
+      "ref": "python-scipy",
+      "dependsOn": [
+        "python-numpy"
+      ]
+    },
+    {
+      "ref": "python-torch",
+      "dependsOn": [
+        "python-numpy"
+      ]
+    },
+    {
+      "ref": "python-pydicom",
+      "dependsOn": [
+        "python-numpy"
+      ]
+    },
+    {
+      "ref": "frontend-angular",
+      "dependsOn": [
+        "frontend-rxjs"
+      ]
+    },
+    {
+      "ref": "frontend-rxjs",
+      "dependsOn": []
+    },
+    {
+      "ref": "rust-wasm-bindgen",
+      "dependsOn": []
+    },
+    {
+      "ref": "rust-serde",
+      "dependsOn": []
+    },
+    {
+      "ref": "rust-serde-wasm-bindgen",
+      "dependsOn": [
+        "rust-serde",
+        "rust-wasm-bindgen"
+      ]
+    }
+  ],
+  "vulnerabilities": [],
+  "services": [
+    {
+      "bom-ref": "vitalstream-api",
+      "name": "VitalStream API Service",
+      "version": "1.0.0",
+      "authenticated": true,
+      "x-trust-boundary": "external",
+      "data": [
+        {
+          "classification": "phi",
+          "flow": "bidirectional",
+          "name": "patient-ecg-data"
+        }
+      ],
+      "properties": [
+        {
+          "name": "service-type",
+          "value": "medical-device-api"
+        },
+        {
+          "name": "compliance",
+          "value": "hipaa-fda"
+        }
+      ]
+    }
+  ]
+}

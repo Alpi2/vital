@@ -1,0 +1,173 @@
+[
+  {
+    "name": "fastapi",
+    "version": "0.104.1",
+    "license": "MIT",
+    "supplier": "Sebastián Ramírez",
+    "purl": "pkg:pypi/fastapi@0.104.1",
+    "category": "web-framework",
+    "security_level": "medium"
+  },
+  {
+    "name": "sqlalchemy",
+    "version": "2.0.23",
+    "license": "MIT",
+    "supplier": "SQLAlchemy Authors",
+    "purl": "pkg:pypi/sqlalchemy@2.0.23",
+    "category": "database-orm",
+    "security_level": "medium"
+  },
+  {
+    "name": "pydantic",
+    "version": "2.5.0",
+    "license": "MIT",
+    "supplier": "Samuel Colvin",
+    "purl": "pkg:pypi/pydantic@2.5.0",
+    "category": "data-validation",
+    "security_level": "medium"
+  },
+  {
+    "name": "cryptography",
+    "version": "41.0.7",
+    "license": "Apache-2.0",
+    "supplier": "Cryptography Developers",
+    "purl": "pkg:pypi/cryptography@41.0.7",
+    "category": "security",
+    "security_level": "high"
+  },
+  {
+    "name": "redis",
+    "version": "5.0.1",
+    "license": "MIT",
+    "supplier": "Redis Labs",
+    "purl": "pkg:pypi/redis@5.0.1",
+    "category": "database-cache",
+    "security_level": "medium"
+  },
+  {
+    "name": "numpy",
+    "version": "1.25.2",
+    "license": "BSD-3-Clause",
+    "supplier": "NumPy Developers",
+    "purl": "pkg:pypi/numpy@1.25.2",
+    "category": "scientific-computing",
+    "security_level": "low"
+  },
+  {
+    "name": "scipy",
+    "version": "1.11.4",
+    "license": "BSD-3-Clause",
+    "supplier": "SciPy Developers",
+    "purl": "pkg:pypi/scipy@1.11.4",
+    "category": "scientific-computing",
+    "security_level": "low"
+  },
+  {
+    "name": "torch",
+    "version": "2.1.1",
+    "license": "BSD-3-Clause",
+    "supplier": "PyTorch Team",
+    "purl": "pkg:pypi/torch@2.1.1",
+    "category": "machine-learning",
+    "security_level": "medium"
+  },
+  {
+    "name": "pydicom",
+    "version": "2.4.4",
+    "license": "MIT",
+    "supplier": "PyDicom Contributors",
+    "purl": "pkg:pypi/pydicom@2.4.4",
+    "category": "medical-imaging",
+    "security_level": "medium"
+  },
+  {
+    "name": "asyncpg",
+    "version": "0.29.0",
+    "license": "Apache-2.0",
+    "supplier": "MagicStack Inc.",
+    "purl": "pkg:pypi/asyncpg@0.29.0",
+    "category": "database-driver",
+    "security_level": "medium"
+  },
+  {
+    "name": "psycopg2-binary",
+    "version": "2.9.9",
+    "license": "LGPL-3.0",
+    "supplier": "Psycopg Team",
+    "purl": "pkg:pypi/psycopg2-binary@2.9.9",
+    "category": "database-driver",
+    "security_level": "medium"
+  },
+  {
+    "name": "alembic",
+    "version": "1.13.1",
+    "license": "MIT",
+    "supplier": "Mike Bayer",
+    "purl": "pkg:pypi/alembic@1.13.1",
+    "category": "database-migration",
+    "security_level": "low"
+  },
+  {
+    "name": "uvicorn",
+    "version": "0.24.0",
+    "license": "BSD-3-Clause",
+    "supplier": "Tom Christie",
+    "purl": "pkg:pypi/uvicorn@0.24.0",
+    "category": "web-server",
+    "security_level": "medium"
+  },
+  {
+    "name": "python-jose",
+    "version": "3.3.0",
+    "license": "MIT",
+    "supplier": "Michael Herman",
+    "purl": "pkg:pypi/python-jose@3.3.0",
+    "category": "security",
+    "security_level": "high"
+  },
+  {
+    "name": "passlib",
+    "version": "1.7.4",
+    "license": "BSD-3-Clause",
+    "supplier": "Eli Collins",
+    "purl": "pkg:pypi/passlib@1.7.4",
+    "category": "security",
+    "security_level": "high"
+  },
+  {
+    "name": "pyotp",
+    "version": "2.9.0",
+    "license": "MIT",
+    "supplier": "PyOTP Contributors",
+    "purl": "pkg:pypi/pyotp@2.9.0",
+    "category": "security",
+    "security_level": "medium"
+  },
+  {
+    "name": "prometheus-client",
+    "version": "0.19.0",
+    "license": "Apache-2.0",
+    "supplier": "Prometheus Developers",
+    "purl": "pkg:pypi/prometheus-client@0.19.0",
+    "category": "monitoring",
+    "security_level": "low"
+  },
+  {
+    "name": "pytest",
+    "version": "7.4.3",
+    "license": "MIT",
+    "supplier": "pytest Developers",
+    "purl": "pkg:pypi/pytest@7.4.3",
+    "category": "testing",
+    "security_level": "low"
+  },
+  {
+    "name": "httpx",
+    "version": "0.25.2",
+    "license": "BSD-3-Clause",
+    "supplier": "Tom Christie",
+    "purl": "pkg:pypi/httpx@0.25.2",
+    "category": "http-client",
+    "security_level": "medium"
+  }
+]
