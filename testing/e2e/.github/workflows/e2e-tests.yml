@@ -1,0 +1,521 @@
+# GitHub Actions CI/CD Integration for E2E Tests
+# Addresses CI/CD integration issues from original plan
+
+name: E2E Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+  DOCKER_BUILDKIT: '1'
+
+jobs:
+  # Build and test services
+  build-test-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: vitalstream/test-environment
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          
+    - name: Build and export Docker images
+      uses: docker/build-push-action@v5
+      id: build
+      with:
+        context: ./testing/e2e
+        file: ./testing/e2e/docker-compose.test.yml
+        tags: ${{ steps.meta.outputs.tags }}
+        outputs: type=docker,dest=/tmp/images.tar
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: Upload Docker images
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-images
+        path: /tmp/images.tar
+
+  # Run E2E tests
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: build-test-environment
+    strategy:
+      matrix:
+        test-suite: [authentication, ecg_analysis, anomaly_detection, websocket, visual_regression]
+        browser: [chromium, firefox, webkit]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Download Docker images
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-images
+        path: /tmp
+        
+    - name: Load Docker images
+      run: |
+        docker load --input /tmp/images.tar
+        
+    - name: Install Python dependencies
+      run: |
+        cd testing/e2e
+        pip install -r requirements.txt
+        
+    - name: Install Node.js dependencies
+      run: |
+        cd testing/e2e
+        npm install -g @playwright/test
+        npm install
+        
+    - name: Install Playwright browsers
+      run: |
+        npx playwright install ${{ matrix.browser }}
+        
+    - name: Start test environment
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml up -d
+        
+        # Wait for services to be healthy
+        timeout 120 bash -c 'until curl -f http://localhost:8001/health; do sleep 2; done'
+        
+    - name: Run E2E tests
+      run: |
+        cd testing/e2e
+        
+        # Set test environment variables
+        export TEST_BROWSER=${{ matrix.browser }}
+        export TEST_SUITE=${{ matrix.test-suite }}
+        export CI=true
+        export PARALLEL_WORKERS=4
+        
+        # Run tests with appropriate markers
+        pytest \
+          --browser=${{ matrix.browser }} \
+          -m "${{ matrix.test-suite }}" \
+          --html=reports/${{ matrix.test-suite }}-${{ matrix.browser }}.html \
+          --json-report --json-report-file=reports/${{ matrix.test-suite }}-${{ matrix.browser }}.json \
+          --junit-xml=reports/${{ matrix.test-suite }}-${{ matrix.browser }}.xml \
+          --cov=backend/app \
+          --cov-report=xml \
+          --cov-report=html \
+          --numprocesses=4 \
+          --dist=load \
+          -v \
+          features/
+          
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: e2e-test-results-${{ matrix.test-suite }}-${{ matrix.browser }}
+        path: |
+          testing/e2e/reports/
+          testing/e2e/coverage/
+        retention-days: 30
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      if: matrix.test-suite == 'ecg_analysis' && matrix.browser == 'chromium'
+      with:
+        file: ./testing/e2e/coverage/xml
+        flags: e2e-tests
+        name: e2e-coverage
+        
+    - name: Stop test environment
+      if: always()
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml down -v --remove-orphans
+        docker system prune -f
+
+  # Visual regression tests
+  visual-regression:
+    runs-on: ubuntu-latest
+    needs: build-test-environment
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        
+    - name: Download Docker images
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-images
+        path: /tmp
+        
+    - name: Load Docker images
+      run: |
+        docker load --input /tmp/images.tar
+        
+    - name: Install dependencies
+      run: |
+        cd testing/e2e
+        pip install -r requirements.txt
+        npm install -g @percy/cli
+        npx playwright install chromium
+        
+    - name: Start test environment
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml up -d
+        timeout 120 bash -c 'until curl -f http://localhost:8001/health; do sleep 2; done'
+        
+    - name: Run visual regression tests
+      env:
+        PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+      run: |
+        cd testing/e2e
+        
+        # Run visual tests with Percy
+        pytest \
+          -m "visual" \
+          --browser=chromium \
+          --html=reports/visual-regression.html \
+          --json-report --json-report-file=reports/visual-regression.json \
+          features/visual_regression.feature
+          
+    - name: Upload visual regression results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: visual-regression-results
+        path: testing/e2e/reports/
+        
+    - name: Stop test environment
+      if: always()
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml down -v --remove-orphans
+
+  # Accessibility tests
+  accessibility-tests:
+    runs-on: ubuntu-latest
+    needs: build-test-environment
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        
+    - name: Download Docker images
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-images
+        path: /tmp
+        
+    - name: Load Docker images
+      run: |
+        docker load --input /tmp/images.tar
+        
+    - name: Install dependencies
+      run: |
+        cd testing/e2e
+        pip install -r requirements.txt
+        npm install -g axe-cli
+        npx playwright install chromium
+        
+    - name: Start test environment
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml up -d
+        timeout 120 bash -c 'until curl -f http://localhost:8001/health; do sleep 2; done'
+        
+    - name: Run accessibility tests
+      run: |
+        cd testing/e2e
+        
+        # Run accessibility tests with axe-core
+        pytest \
+          -m "accessibility" \
+          --browser=chromium \
+          --html=reports/accessibility.html \
+          --json-report --json-report-file=reports/accessibility.json \
+          features/accessibility_testing.feature
+          
+    - name: Upload accessibility results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: accessibility-test-results
+        path: testing/e2e/reports/
+        
+    - name: Stop test environment
+      if: always()
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml down -v --remove-orphans
+
+  # Performance tests
+  performance-tests:
+    runs-on: ubuntu-latest
+    needs: build-test-environment
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        
+    - name: Download Docker images
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-images
+        path: /tmp
+        
+    - name: Load Docker images
+      run: |
+        docker load --input /tmp/images.tar
+        
+    - name: Install dependencies
+      run: |
+        cd testing/e2e
+        pip install -r requirements.txt
+        npm install -g @lhci/cli@0.12.x
+        npx playwright install chromium
+        
+    - name: Start test environment
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml up -d
+        timeout 120 bash -c 'until curl -f http://localhost:8001/health; do sleep 2; done'
+        
+    - name: Run Lighthouse CI performance tests
+      env:
+        LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+        LHCI_SERVER_URL: ${{ secrets.LHCI_SERVER_URL }}
+      run: |
+        cd testing/e2e
+        
+        # Run Lighthouse CI tests
+        pytest \
+          -m "performance" \
+          --browser=chromium \
+          --html=reports/performance.html \
+          --json-report --json-report-file=reports/performance.json \
+          features/performance_testing.feature
+          
+    - name: Upload performance results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: performance-test-results
+        path: |
+          testing/e2e/reports/
+          testing/e2e/.lighthouseci/
+          
+    - name: Stop test environment
+      if: always()
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml down -v --remove-orphans
+
+  # Security tests
+  security-tests:
+    runs-on: ubuntu-latest
+    needs: build-test-environment
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Download Docker images
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-images
+        path: /tmp
+        
+    - name: Load Docker images
+      run: |
+        docker load --input /tmp/images.tar
+        
+    - name: Install dependencies
+      run: |
+        cd testing/e2e
+        pip install -r requirements.txt
+        
+    - name: Start test environment
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml up -d
+        timeout 120 bash -c 'until curl -f http://localhost:8001/health; do sleep 2; done'
+        
+    - name: Run security tests
+      run: |
+        cd testing/e2e
+        
+        # Run security-focused E2E tests
+        pytest \
+          -m "security" \
+          --html=reports/security.html \
+          --json-report --json-report-file=reports/security.json \
+          features/authentication.feature \
+          -k "security"
+          
+    - name: Upload security results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-test-results
+        path: testing/e2e/reports/
+        
+    - name: Stop test environment
+      if: always()
+      run: |
+        cd testing/e2e
+        docker-compose -f docker-compose.test.yml down -v --remove-orphans
+
+  # Test results summary
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [e2e-tests, visual-regression, accessibility-tests, performance-tests]
+    if: always()
+    
+    steps:
+    - name: Download all test results
+      uses: actions/download-artifact@v4
+      with:
+        path: all-results
+        
+    - name: Generate test summary
+      run: |
+        # Create summary report
+        echo "# E2E Test Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Test Results Overview" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Count test results
+        for result_dir in all-results/*/; do
+          if [ -f "$result_dir"/*.json ]; then
+            echo "### $(basename $result_dir)" >> $GITHUB_STEP_SUMMARY
+            python -c "
+import json
+import sys
+import glob
+
+try:
+    with open(glob.glob('$result_dir/*.json')[0]) as f:
+        data = json.load(f)
+        if 'summary' in data:
+            total = data['summary'].get('total', 0)
+            passed = data['summary'].get('passed', 0)
+            failed = data['summary'].get('failed', 0)
+            print(f'- Total: {total}, Passed: {passed}, Failed: {failed}')
+        else:
+            print('- No summary data available')
+except:
+    print('- Error reading results')
+" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+        
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = './all-results';
+          
+          let summary = '## 🧪 E2E Test Results\n\n';
+          
+          // Read test results
+          const testTypes = ['e2e-test-results', 'visual-regression-results', 'accessibility-test-results', 'performance-test-results'];
+          
+          for (const testType of testTypes) {
+            const resultPath = `${path}/${testType}/test-report.json`;
+            if (fs.existsSync(resultPath)) {
+              const data = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+              summary += `### ${testType}\n`;
+              
+              if (data.summary) {
+                const { total, passed, failed } = data.summary;
+                const passRate = total > 0 ? ((passed / total) * 100).toFixed(1) : 0;
+                summary += `- ✅ Passed: ${passed}\n`;
+                summary += `- ❌ Failed: ${failed}\n`;
+                summary += `- 📊 Success Rate: ${passRate}%\n\n`;
+              }
+            }
+          }
+          
+          // Create or update PR comment
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            body: summary
+          });
