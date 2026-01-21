@@ -34,8 +34,14 @@ htmlcov/
 # C++/Rust/WebAssembly
 *.o
 *.wasm
-*.js
-target/
+/target/          
+/build/           
+/dist/*.wasm.js   
+
+# Local virtualenv directories
+/.venv/
+**/.venv/
+/backend/.venv/
 
 # IDE/Editor
 .vscode/
@@ -88,3 +94,6 @@ local.settings.json
 .env 
 /backend/venv
 venv/
+
+.config/
+**/target/
