@@ -1,0 +1,181 @@
+{
+  "version": "1.0",
+  "gestures": [
+    {
+      "id": "GEST_001",
+      "name": "Point",
+      "description": "Point with index finger to select",
+      "finger_states": {
+        "thumb": false,
+        "index": true,
+        "middle": false,
+        "ring": false,
+        "pinky": false
+      },
+      "action": "cursor_move",
+      "continuous": true
+    },
+    {
+      "id": "GEST_002",
+      "name": "Pinch",
+      "description": "Pinch thumb and index finger to click",
+      "detection": "distance_threshold",
+      "landmarks": [4, 8],
+      "threshold": 0.05,
+      "action": "click",
+      "continuous": false
+    },
+    {
+      "id": "GEST_003",
+      "name": "Open Palm",
+      "description": "Open palm to pause/stop",
+      "finger_states": {
+        "thumb": true,
+        "index": true,
+        "middle": true,
+        "ring": true,
+        "pinky": true
+      },
+      "action": "pause",
+      "continuous": false
+    },
+    {
+      "id": "GEST_004",
+      "name": "Fist",
+      "description": "Closed fist to grab/drag",
+      "finger_states": {
+        "thumb": false,
+        "index": false,
+        "middle": false,
+        "ring": false,
+        "pinky": false
+      },
+      "action": "grab",
+      "continuous": true
+    },
+    {
+      "id": "GEST_005",
+      "name": "Thumbs Up",
+      "description": "Thumbs up to confirm",
+      "finger_states": {
+        "thumb": true,
+        "index": false,
+        "middle": false,
+        "ring": false,
+        "pinky": false
+      },
+      "action": "confirm",
+      "continuous": false
+    },
+    {
+      "id": "GEST_006",
+      "name": "Peace Sign",
+      "description": "Index and middle finger extended for scroll",
+      "finger_states": {
+        "thumb": false,
+        "index": true,
+        "middle": true,
+        "ring": false,
+        "pinky": false
+      },
+      "action": "scroll",
+      "continuous": true
+    },
+    {
+      "id": "GEST_007",
+      "name": "Swipe Left",
+      "description": "Swipe hand left to go to previous",
+      "detection": "motion",
+      "direction": "left",
+      "min_distance": 0.3,
+      "action": "previous",
+      "continuous": false
+    },
+    {
+      "id": "GEST_008",
+      "name": "Swipe Right",
+      "description": "Swipe hand right to go to next",
+      "detection": "motion",
+      "direction": "right",
+      "min_distance": 0.3,
+      "action": "next",
+      "continuous": false
+    },
+    {
+      "id": "GEST_009",
+      "name": "Zoom In",
+      "description": "Move hands apart to zoom in",
+      "detection": "two_hand_distance",
+      "direction": "increase",
+      "action": "zoom_in",
+      "continuous": true
+    },
+    {
+      "id": "GEST_010",
+      "name": "Zoom Out",
+      "description": "Move hands together to zoom out",
+      "detection": "two_hand_distance",
+      "direction": "decrease",
+      "action": "zoom_out",
+      "continuous": true
+    },
+    {
+      "id": "GEST_011",
+      "name": "Rotate Clockwise",
+      "description": "Rotate hand clockwise to rotate image",
+      "detection": "rotation",
+      "direction": "clockwise",
+      "action": "rotate_cw",
+      "continuous": true
+    },
+    {
+      "id": "GEST_012",
+      "name": "Rotate Counter-Clockwise",
+      "description": "Rotate hand counter-clockwise to rotate image",
+      "detection": "rotation",
+      "direction": "counter_clockwise",
+      "action": "rotate_ccw",
+      "continuous": true
+    },
+    {
+      "id": "GEST_013",
+      "name": "Three Fingers Up",
+      "description": "Three fingers up to open menu",
+      "finger_states": {
+        "thumb": false,
+        "index": true,
+        "middle": true,
+        "ring": true,
+        "pinky": false
+      },
+      "action": "open_menu",
+      "continuous": false
+    },
+    {
+      "id": "GEST_014",
+      "name": "Wave",
+      "description": "Wave hand to dismiss/cancel",
+      "detection": "motion",
+      "pattern": "oscillating",
+      "action": "cancel",
+      "continuous": false
+    },
+    {
+      "id": "GEST_015",
+      "name": "Double Tap",
+      "description": "Quick double pinch to double-click",
+      "detection": "temporal",
+      "base_gesture": "GEST_002",
+      "repetitions": 2,
+      "max_interval_ms": 500,
+      "action": "double_click",
+      "continuous": false
+    }
+  ],
+  "settings": {
+    "fps_target": 30,
+    "smoothing_factor": 0.5,
+    "gesture_hold_time_ms": 500,
+    "debounce_time_ms": 200
+  }
+}
