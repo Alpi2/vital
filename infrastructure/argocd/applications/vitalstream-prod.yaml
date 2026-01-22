@@ -1,0 +1,235 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vitalstream-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: vitalstream-prod
+    app.kubernetes.io/component: application
+    app.kubernetes.io/part-of: vitalstream
+    environment: production
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-options: CreateNamespace=true,PrunePropagationPolicy=foreground,PruneLast=true,RespectIgnoreDifferences=true
+    argocd.argoproj.io/compare-options: IgnoreExtraneousFields
+    notifications.argoproj.io/subscribe.on-sync-succeeded: slack
+    notifications.argoproj.io/subscribe.on-sync-failed: slack
+    notifications.argoproj.io/subscribe.on-health-degraded: slack
+spec:
+  project: vitalstream
+  source:
+    repoURL: https://github.com/vitalstream/vitalstream.git
+    targetRevision: main
+    path: infrastructure/helm/vitalstream
+    helm:
+      valueFiles:
+        - values-prod.yaml
+      releaseName: vitalstream-prod
+      parameters:
+        - name: global.environment
+          value: production
+        - name: global.domain
+          value: vitalstream.com
+        - name: backend.replicaCount
+          value: "5"
+        - name: frontend.replicaCount
+          value: "3"
+        - name: alarmEngine.replicaCount
+          value: "3"
+        - name: dicomService.replicaCount
+          value: "2"
+        - name: websocketService.replicaCount
+          value: "3"
+        - name: mlInference.replicaCount
+          value: "2"
+        - name: postgresql.primary.persistence.size
+          value: "1000Gi"
+        - name: redis.master.persistence.size
+          value: "100Gi"
+      # Pass secrets from external secrets
+      valuesObject:
+        global:
+          imageRegistry: ghcr.io/vitalstream
+          imagePullPolicy: IfNotPresent
+        backend:
+          image:
+            tag: "v1.0.0"
+            sha: "abc123def456"
+        frontend:
+          image:
+            tag: "v1.0.0"
+            sha: "def456ghi789"
+        alarmEngine:
+          image:
+            tag: "v1.0.0"
+            sha: "ghi789jkl012"
+        dicomService:
+          image:
+            tag: "v1.0.0"
+            sha: "jkl012mno345"
+        websocketService:
+          image:
+            tag: "v1.0.0"
+            sha: "mno345pqr678"
+        mlInference:
+          image:
+            tag: "v1.0.0"
+            sha: "pqr678stu901"
+        # Enable all production features
+        monitoring:
+          enabled: true
+          serviceMonitor:
+            enabled: true
+        ingress:
+          enabled: true
+          className: nginx
+        sealedSecrets:
+          enabled: true
+        networkPolicy:
+          enabled: true
+        podDisruptionBudget:
+          enabled: true
+        backup:
+          enabled: true
+          schedule: "0 2 * * *"
+          retention: "90d"
+        security:
+          podSecurityStandards:
+            enforced: true
+            level: restricted
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vitalstream-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+    managedNamespaceMetadata:
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        environment: production
+        project: vitalstream
+      annotations:
+        argocd.argoproj.io/sync-options: CreateNamespace=true,PrunePropagationPolicy=foreground,PruneLast=true
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+      - /spec/replicas  # Ignore HPA-managed replicas
+  - group: apps
+    kind: StatefulSet
+    jsonPointers:
+      - /spec/replicas  # Ignore HPA-managed replicas
+  - group: ""
+    kind: Secret
+    jsonPointers:
+      - /data/ca.crt  # Ignore certificate changes
+  - group: ""
+    kind: ConfigMap
+    jsonPointers:
+      - /data/kube-root-ca.crt  # Ignore CA bundle changes
+  # Health assessment
+  health:
+    status: Healthy
+    # Custom health checks
+    customHealthChecks:
+      - name: backend-health
+        check:
+          http:
+            url: https://api.vitalstream.com/health
+            expectedStatus: 200
+      - name: frontend-health
+        check:
+          http:
+            url: https://vitalstream.com/health
+            expectedStatus: 200
+      - name: database-health
+        check:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - "pg_isready -h postgresql -p 5432 -U postgres"
+  # Sync waves for ordered deployment
+  syncWaves:
+    - name: infrastructure
+      resources:
+        - group: ""
+          kind: Namespace
+        - group: ""
+          kind: ConfigMap
+        - group: ""
+          kind: Secret
+        - group: rbac.authorization.k8s.io
+          kind: Role
+        - group: rbac.authorization.k8s.io
+          kind: RoleBinding
+    - name: storage
+      resources:
+        - group: ""
+          kind: PersistentVolumeClaim
+        - group: apps
+          kind: StatefulSet
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+        - group: apps
+          kind: StatefulSet
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+    - name: backend-services
+      resources:
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: alarmEngine
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: websocketService
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: mlInference
+    - name: frontend-services
+      resources:
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+    - name: ingress
+      resources:
+        - group: networking.k8s.io
+          kind: Ingress
+    - name: monitoring
+      resources:
+        - group: monitoring.coreos.com
+          kind: ServiceMonitor
+        - group: ""
+          kind: Service
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: monitoring

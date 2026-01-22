@@ -1,0 +1,438 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: vitalstream-multi-env
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: vitalstream-multi-env
+    app.kubernetes.io/component: applicationset
+    app.kubernetes.io/part-of: vitalstream
+spec:
+  generators:
+  # Git generator for multiple environments
+  - git:
+      repoURL: https://github.com/vitalstream/vitalstream.git
+      revision: HEAD
+      directories:
+      - path: infrastructure/argocd/environments/*
+      # Exclude templates and examples
+      exclude: true
+      if: path == "infrastructure/argocd/environments/*"
+  
+  # Matrix generator for environment-specific configurations
+  - matrix:
+      generators:
+      - git:
+          repoURL: https://github.com/vitalstream/vitalstream.git
+          revision: HEAD
+          files:
+          - path: infrastructure/argocd/environments/*/config.yaml
+      - clusters:
+          selector:
+            matchLabels:
+              argocd.argoproj.io/managed-by: vitalstream
+          values:
+            clusterName: "{{name}}"
+            clusterServer: "{{server}}"
+  
+  # List generator for static environments
+  - list:
+      elements:
+      - cluster: in-cluster
+        url: https://kubernetes.default.svc
+        environments:
+          - name: development
+            namespace: vitalstream-dev
+            valuesFile: values-dev.yaml
+            targetRevision: develop
+            replicas:
+              backend: 1
+              frontend: 1
+              alarmEngine: 1
+              dicomService: 1
+              websocketService: 1
+              mlInference: 1
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+            features:
+              debug: true
+              hotReload: true
+              mockData: true
+          - name: staging
+            namespace: vitalstream-staging
+            valuesFile: values-staging.yaml
+            targetRevision: main
+            replicas:
+              backend: 2
+              frontend: 2
+              alarmEngine: 2
+              dicomService: 2
+              websocketService: 2
+              mlInference: 1
+            resources:
+              requests:
+                cpu: 300m
+                memory: 256Mi
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+            features:
+              debug: false
+              hotReload: false
+              mockData: false
+              integrationTesting: true
+          - name: production
+            namespace: vitalstream-prod
+            valuesFile: values-prod.yaml
+            targetRevision: main
+            replicas:
+              backend: 5
+              frontend: 3
+              alarmEngine: 3
+              dicomService: 2
+              websocketService: 3
+              mlInference: 2
+            resources:
+              requests:
+                cpu: 1000m
+                memory: 1Gi
+              limits:
+                cpu: 4000m
+                memory: 4Gi
+            features:
+              debug: false
+              hotReload: false
+              mockData: false
+              highAvailability: true
+              disasterRecovery: true
+  
+  # Cluster generator for multi-cluster support
+  - clusters:
+      selector:
+        matchLabels:
+          argocd.argoproj.io/managed-by: vitalstream
+      values:
+        clusterName: "{{name}}"
+        clusterServer: "{{server}}"
+  
+  template:
+    metadata:
+      name: 'vitalstream-{{cluster.name}}-{{environment.name}}'
+      namespace: argocd
+      labels:
+        app.kubernetes.io/name: 'vitalstream-{{cluster.name}}-{{environment.name}}'
+        app.kubernetes.io/component: application
+        app.kubernetes.io/part-of: vitalstream
+        environment: '{{environment.name}}'
+        cluster: '{{cluster.name}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+      annotations:
+        argocd.argoproj.io/sync-options: CreateNamespace=true,PrunePropagationPolicy=foreground,PruneLast=true,RespectIgnoreDifferences=true
+        argocd.argoproj.io/compare-options: IgnoreExtraneousFields
+        notifications.argoproj.io/subscribe.on-sync-succeeded: slack
+        notifications.argoproj.io/subscribe.on-sync-failed: slack
+        notifications.argoproj.io/subscribe.on-health-degraded: slack
+        # Environment-specific annotations
+        {{- if eq environment.name "production" }}
+        argocd.argoproj.io/sync-wave: "0"
+        argocd.argoproj.io/priority: "high"
+        {{- end }}
+        {{- if eq environment.name "staging" }}
+        argocd.argoproj.io/sync-wave: "1"
+        argocd.argoproj.io/priority: "medium"
+        {{- end }}
+        {{- if eq environment.name "development" }}
+        argocd.argoproj.io/sync-wave: "2"
+        argocd.argoproj.io/priority: "low"
+        {{- end }}
+    
+    spec:
+      project: vitalstream
+      source:
+        repoURL: https://github.com/vitalstream/vitalstream.git
+        targetRevision: '{{environment.targetRevision}}'
+        path: infrastructure/helm/vitalstream
+        helm:
+          valueFiles:
+            - '{{environment.valuesFile}}'
+          releaseName: 'vitalstream-{{environment.name}}'
+          parameters:
+            # Environment-specific parameters
+            - name: global.environment
+              value: '{{environment.name}}'
+            - name: global.domain
+              value: 'vitalstream{{if eq environment.name "production"}}.com{{else if eq environment.name "staging"}}.staging{{else}}.dev{{end}}'
+            - name: backend.replicaCount
+              value: '{{environment.replicas.backend}}'
+            - name: frontend.replicaCount
+              value: '{{environment.replicas.frontend}}'
+            - name: alarmEngine.replicaCount
+              value: '{{environment.replicas.alarmEngine}}'
+            - name: dicomService.replicaCount
+              value: '{{environment.replicas.dicomService}}'
+            - name: websocketService.replicaCount
+              value: '{{environment.replicas.websocketService}}'
+            - name: mlInference.replicaCount
+              value: '{{environment.replicas.mlInference}}'
+            # Resource parameters
+            - name: backend.resources.requests.cpu
+              value: '{{environment.resources.requests.cpu}}'
+            - name: backend.resources.requests.memory
+              value: '{{environment.resources.requests.memory}}'
+            - name: backend.resources.limits.cpu
+              value: '{{environment.resources.limits.cpu}}'
+            - name: backend.resources.limits.memory
+              value: '{{environment.resources.limits.memory}}'
+            # Feature flags
+            - name: backend.debug
+              value: '{{environment.features.debug}}'
+            - name: frontend.hotReload
+              value: '{{environment.features.hotReload}}'
+            - name: backend.mockData
+              value: '{{environment.features.mockData}}'
+            - name: monitoring.enabled
+              value: 'true'
+            - name: ingress.enabled
+              value: 'true'
+            - name: sealedSecrets.enabled
+              value: '{{if eq environment.name "production"}}true{{else}}false{{end}}'
+            - name: networkPolicy.enabled
+              value: '{{if eq environment.name "production"}}true{{else}}false{{end}}'
+            - name: podDisruptionBudget.enabled
+              value: '{{if eq environment.name "production"}}true{{else}}false{{end}}'
+            - name: backup.enabled
+              value: '{{if eq environment.name "production"}}true{{else if eq environment.name "staging"}}true{{else}}false{{end}}'
+            - name: security.podSecurityStandards.enforced
+              value: '{{if eq environment.name "production"}}true{{else}}false{{end}}'
+            # Production-specific settings
+            {{- if eq environment.name "production" }}
+            - name: global.imageRegistry
+              value: ghcr.io/vitalstream
+            - name: global.imagePullPolicy
+              value: IfNotPresent
+            - name: postgresql.primary.persistence.size
+              value: 1000Gi
+            - name: redis.master.persistence.size
+              value: 100Gi
+            - name: dicomService.persistence.size
+              value: 500Gi
+            - name: mlInference.persistence.size
+              value: 100Gi
+            {{- end }}
+            # Staging-specific settings
+            {{- if eq environment.name "staging" }}
+            - name: global.imageRegistry
+              value: ghcr.io/vitalstream
+            - name: global.imagePullPolicy
+              value: IfNotPresent
+            - name: postgresql.primary.persistence.size
+              value: 100Gi
+            - name: redis.master.persistence.size
+              value: 20Gi
+            - name: dicomService.persistence.size
+              value: 50Gi
+            - name: mlInference.persistence.size
+              value: 20Gi
+            {{- end }}
+            # Development-specific settings
+            {{- if eq environment.name "development" }}
+            - name: global.imageRegistry
+              value: localhost:5000
+            - name: global.imagePullPolicy
+              value: Always
+            - name: postgresql.primary.persistence.size
+              value: 20Gi
+            - name: redis.master.persistence.size
+              value: 5Gi
+            - name: dicomService.persistence.size
+              value: 10Gi
+            - name: mlInference.persistence.size
+              value: 5Gi
+            {{- end }}
+          # Values object for complex configurations
+          valuesObject:
+            global:
+              imageRegistry: '{{if eq environment.name "production"}}ghcr.io/vitalstream{{else if eq environment.name "staging"}}ghcr.io/vitalstream{{else}}localhost:5000{{end}}'
+              imagePullPolicy: '{{if eq environment.name "development"}}Always{{else}}IfNotPresent{{end}}'
+              environment: '{{environment.name}}'
+              domain: 'vitalstream{{if eq environment.name "production"}}.com{{else if eq environment.name "staging"}}.staging{{else}}.dev{{end}}'
+            # Feature flags per environment
+            features:
+              debug: '{{environment.features.debug}}'
+              hotReload: '{{environment.features.hotReload}}'
+              mockData: '{{environment.features.mockData}}'
+              integrationTesting: '{{environment.features.integrationTesting}}'
+              highAvailability: '{{environment.features.highAvailability}}'
+              disasterRecovery: '{{environment.features.disasterRecovery}}'
+            # Environment-specific monitoring
+            monitoring:
+              enabled: true
+              serviceMonitor:
+                enabled: true
+                interval: '{{if eq environment.name "production"}}30s{{else if eq environment.name "staging"}}30s{{else}}60s{{end}}'
+            # Environment-specific security
+            security:
+              podSecurityStandards:
+                enforced: '{{if eq environment.name "production"}}true{{else}}false{{end}}'
+                level: '{{if eq environment.name "production"}}restricted{{else}}baseline{{end}}'
+              networkPolicy:
+                enabled: '{{if eq environment.name "production"}}true{{else}}false{{end}}'
+            # Environment-specific backup
+            backup:
+              enabled: '{{if eq environment.name "production"}}true{{else if eq environment.name "staging"}}true{{else}}false{{end}}'
+              schedule: '{{if eq environment.name "production"}}0 2 * * *{{else if eq environment.name "staging"}}0 3 * * *{{else}}{{end}}'
+              retention: '{{if eq environment.name "production"}}90d{{else if eq environment.name "staging"}}30d{{else}}{{end}}'
+      
+      destination:
+        server: '{{cluster.url}}'
+        namespace: '{{environment.namespace}}'
+      
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        retry:
+          limit: '{{if eq environment.name "production"}}5{{else if eq environment.name "staging"}}3{{else}}1{{end}}'
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: '{{if eq environment.name "production"}}3m{{else if eq environment.name "staging"}}2m{{else}}1m{{end}}'
+        managedNamespaceMetadata:
+          labels:
+            app.kubernetes.io/managed-by: argocd
+            environment: '{{environment.name}}'
+            cluster: '{{cluster.name}}'
+            project: vitalstream
+          annotations:
+            argocd.argoproj.io/sync-options: CreateNamespace=true,PrunePropagationPolicy=foreground,PruneLast=true
+      
+      # Health assessment per environment
+      health:
+        status: Healthy
+        customHealthChecks:
+          - name: backend-health
+            check:
+              http:
+                url: 'https://api.vitalstream{{if eq environment.name "production"}}.com{{else if eq environment.name "staging"}}.staging{{else}}.dev{{end}}/health'
+                expectedStatus: 200
+                timeoutSeconds: 30
+          - name: frontend-health
+            check:
+              http:
+                url: 'https://vitalstream{{if eq environment.name "production"}}.com{{else if eq environment.name "staging"}}.staging{{else}}.dev{{end}}/health'
+                expectedStatus: 200
+                timeoutSeconds: 30
+          # Skip database health check in development
+          {{- if ne environment.name "development" }}
+          - name: database-health
+            check:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - "pg_isready -h vitalstream-{{environment.name}}-postgresql -p 5432 -U postgres"
+                timeoutSeconds: 10
+          {{- end }}
+      
+      # Ignore differences for managed resources
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+          - /spec/replicas  # Ignore HPA-managed replicas
+      - group: apps
+        kind: StatefulSet
+        jsonPointers:
+          - /spec/replicas  # Ignore HPA-managed replicas
+      - group: ""
+        kind: Secret
+        jsonPointers:
+          - /data/ca.crt  # Ignore certificate changes
+          - /data/tls.crt  # Ignore TLS certificate changes
+      - group: ""
+        kind: ConfigMap
+        jsonPointers:
+          - /data/kube-root-ca.crt  # Ignore CA bundle changes
+      
+      # Sync waves for ordered deployment
+      syncWaves:
+        - name: infrastructure
+          resources:
+            - group: ""
+              kind: Namespace
+            - group: ""
+              kind: ConfigMap
+            - group: ""
+              kind: Secret
+            - group: rbac.authorization.k8s.io
+              kind: Role
+            - group: rbac.authorization.k8s.io
+              kind: RoleBinding
+        - name: storage
+          resources:
+            - group: ""
+              kind: PersistentVolumeClaim
+            - group: apps
+              kind: StatefulSet
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: postgresql
+            - group: apps
+              kind: StatefulSet
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: redis
+        - name: backend-services
+          resources:
+            - group: apps
+              kind: Deployment
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: backend
+            - group: apps
+              kind: Deployment
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: alarmEngine
+            - group: apps
+              kind: Deployment
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: websocketService
+            - group: apps
+              kind: Deployment
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: mlInference
+        - name: frontend-services
+          resources:
+            - group: apps
+              kind: Deployment
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: frontend
+        - name: ingress
+          resources:
+            - group: networking.k8s.io
+              kind: Ingress
+        - name: monitoring
+          resources:
+            - group: monitoring.coreos.com
+              kind: ServiceMonitor
+            - group: ""
+              kind: Service
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: monitoring

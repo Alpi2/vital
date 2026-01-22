@@ -1,0 +1,830 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vitalstream-blue-green
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: vitalstream-blue-green
+    app.kubernetes.io/component: application
+    app.kubernetes.io/part-of: vitalstream
+    environment: production
+    deployment-strategy: blue-green
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-options: CreateNamespace=true,PrunePropagationPolicy=foreground,PruneLast=true,RespectIgnoreDifferences=true
+    argocd.argoproj.io/compare-options: IgnoreExtraneousFields
+    notifications.argoproj.io/subscribe.on-sync-succeeded: slack
+    notifications.argoproj.io/subscribe.on-sync-failed: slack
+    notifications.argoproj.io/subscribe.on-health-degraded: slack
+    notifications.argoproj.io/subscribe.on-rollout-completed: slack
+    notifications.argoproj.io/subscribe.on-rollout-failed: slack
+    # Blue-Green specific annotations
+    rollouts.argoproj.io/managed-by: "argo-rollouts"
+    rollouts.argoproj.io/strategy: "blue-green"
+    rollouts.argoproj.io/traffic-routing: "enabled"
+    # Approval workflow annotations
+    argocd.argoproj.io/sync-options: "CreateNamespace=true,PrunePropagationPolicy=foreground,PruneLast=true,RespectIgnoreDifferences=true"
+    argocd.argoproj.io/hook-dependency: "pre-sync,post-sync"
+spec:
+  project: vitalstream
+  source:
+    repoURL: https://github.com/vitalstream/vitalstream.git
+    targetRevision: main
+    path: infrastructure/helm/vitalstream
+    helm:
+      valueFiles:
+        - values-prod.yaml
+      releaseName: vitalstream-blue-green
+      parameters:
+        # Global configuration
+        - name: global.environment
+          value: production
+        - name: global.domain
+          value: vitalstream.com
+        - name: global.imageRegistry
+          value: ghcr.io/vitalstream
+        - name: global.imagePullPolicy
+          value: IfNotPresent
+        
+        # Backend configuration for blue-green
+        - name: backend.enabled
+          value: "true"
+        - name: backend.replicaCount
+          value: "3"
+        - name: backend.image.tag
+          value: "v1.0.0"
+        - name: backend.image.sha
+          value: "abc123def456"
+        - name: backend.strategy.type
+          value: "BlueGreen"
+        - name: backend.rollout.autoPromotionEnabled
+          value: "false"
+        - name: backend.rollout.scaleDownDelay
+          value: "300"
+        - name: backend.rollout.prePromotionDelay
+          value: "60"
+        - name: backend.rollout.previewReplicaCount
+          value: "1"
+        - name: backend.rollout.canary.enabled
+          value: "false"
+        
+        # SLO configuration
+        - name: backend.slo.errorRate
+          value: "0.01"
+        - name: backend.slo.latencyP95
+          value: "0.5"
+        - name: backend.slo.availability
+          value: "0.999"
+        - name: backend.slo.throughput
+          value: "100"
+        
+        # Service configuration
+        - name: backend.service.type
+          value: "ClusterIP"
+        - name: backend.service.sessionAffinity
+          value: "None"
+        - name: backend.service.httpPort
+          value: "8000"
+        - name: backend.service.metricsPort
+          value: "8000"
+        
+        # Headless service configuration
+        - name: backend.headlessService.enabled
+          value: "true"
+        
+        # Health check configuration
+        - name: backend.healthChecks.liveness.initialDelaySeconds
+          value: "30"
+        - name: backend.healthChecks.liveness.periodSeconds
+          value: "10"
+        - name: backend.healthChecks.liveness.timeoutSeconds
+          value: "5"
+        - name: backend.healthChecks.liveness.failureThreshold
+          value: "3"
+        - name: backend.healthChecks.liveness.successThreshold
+          value: "1"
+        - name: backend.healthChecks.readiness.initialDelaySeconds
+          value: "5"
+        - name: backend.healthChecks.readiness.periodSeconds
+          value: "5"
+        - name: backend.healthChecks.readiness.timeoutSeconds
+          value: "3"
+        - name: backend.healthChecks.readiness.failureThreshold
+          value: "3"
+        - name: backend.healthChecks.readiness.successThreshold
+          value: "1"
+        - name: backend.healthChecks.startup.initialDelaySeconds
+          value: "10"
+        - name: backend.healthChecks.startup.periodSeconds
+          value: "10"
+        - name: backend.healthChecks.startup.timeoutSeconds
+          value: "5"
+        - name: backend.healthChecks.startup.failureThreshold
+          value: "30"
+        - name: backend.healthChecks.startup.successThreshold
+          value: "1"
+        
+        # Resource configuration
+        - name: backend.resources.requests.cpu
+          value: "1000m"
+        - name: backend.resources.requests.memory
+          value: "1Gi"
+        - name: backend.resources.limits.cpu
+          value: "4000m"
+        - name: backend.resources.limits.memory
+          value: "4Gi"
+        
+        # Node selector and affinity
+        - name: backend.nodeSelector.node-type
+          value: "application"
+        - name: backend.nodeSelector.performance-tier
+          value: "high"
+        - name: backend.priorityClassName
+          value: "production-high"
+        
+        # Tolerations
+        - name: backend.tolerations[0].key
+          value: "application"
+        - name: backend.tolerations[0].operator
+          value: "Equal"
+        - name: backend.tolerations[0].value
+          value: "true"
+        - name: backend.tolerations[0].effect
+          value: "NoSchedule"
+        
+        # Environment variables
+        - name: backend.env[0].name
+          value: "DEPLOYMENT_STRATEGY"
+        - name: backend.env[0].value
+          value: "blue-green"
+        - name: backend.env[1].name
+          value: "ENVIRONMENT"
+        - name: backend.env[1].value
+          value: "production"
+        - name: backend.env[2].name
+          value: "SERVICE_NAME"
+        - name: backend.env[2].value
+          value: "vitalstream-prod-backend"
+        - name: backend.env[3].name
+          value: "NAMESPACE"
+        - name: backend.env[3].value
+          value: "vitalstream-prod"
+        
+        # Monitoring configuration
+        - name: monitoring.enabled
+          value: "true"
+        - name: monitoring.serviceMonitor.enabled
+          value: "true"
+        - name: monitoring.serviceMonitor.interval
+          value: "30s"
+        - name: monitoring.serviceMonitor.scrapeTimeout
+          value: "10s"
+        
+        # Network policy configuration
+        - name: networkPolicy.enabled
+          value: "true"
+        
+        # Pod disruption budget configuration
+        - name: podDisruptionBudget.enabled
+          value: "true"
+        - name: podDisruptionBudget.backend.minAvailable
+          value: "2"
+        - name: podDisruptionBudget.backend.maxUnavailable
+          value: "1"
+        
+        # Security configuration
+        - name: security.podSecurityStandards.enforced
+          value: "true"
+        - name: security.podSecurityStandards.level
+          value: "restricted"
+        - name: security.imagePolicies.allowPrivileged
+          value: "false"
+        - name: security.imagePolicies.allowRoot
+          value: "false"
+        - name: security.imagePolicies.readOnlyRootFilesystem
+          value: "true"
+        
+        # Backup configuration
+        - name: backup.enabled
+          value: "true"
+        - name: backup.schedule
+          value: "0 2 * * *"
+        - name: backup.retention
+          value: "90d"
+        - name: backup.storageClass
+          value: "standard"
+        - name: backup.size
+          value: "1TB"
+        
+        # Ingress configuration
+        - name: ingress.enabled
+          value: "true"
+        - name: ingress.className
+          value: "nginx"
+        - name: ingress.tls[0].secretName
+          value: "vitalstream-prod-tls"
+        - name: ingress.tls[0].hosts[0]
+          value: "api.vitalstream.com"
+        
+        # Database configuration
+        - name: postgresql.enabled
+          value: "true"
+        - name: postgresql.primary.persistence.size
+          value: "1000Gi"
+        - name: postgresql.primary.persistence.storageClass
+          value: "fast-ssd"
+        - name: postgresql.auth.existingSecret
+          value: "vitalstream-secrets"
+        - name: postgresql.auth.secretKeys.adminPasswordKey
+          value: "database-password"
+        
+        # Redis configuration
+        - name: redis.enabled
+          value: "true"
+        - name: redis.master.persistence.size
+          value: "100Gi"
+        - name: redis.master.persistence.storageClass
+          value: "fast-ssd"
+        - name: redis.auth.existingSecret
+          value: "vitalstream-secrets"
+        - name: redis.auth.existingSecretPasswordKey
+          value: "redis-password"
+        
+        # Sealed secrets configuration
+        - name: sealedSecrets.enabled
+          value: "true"
+        - name: sealedSecrets.namespace
+          value: "vitalstream-prod"
+        
+        # Analysis templates configuration
+        - name: analysisTemplates.enabled
+          value: "true"
+        - name: analysisTemplates.smokeTests.enabled
+          value: "true"
+        - name: analysisTemplates.sloAnalysis.enabled
+          value: "true"
+        - name: analysisTemplates.prePromotion.enabled
+          value: "true"
+        - name: analysisTemplates.postPromotion.enabled
+          value: "true"
+        
+        # Rollout configuration
+        - name: rollout.revisionHistoryLimit
+          value: "10"
+        - name: rollout.progressDeadlineSeconds
+          value: "600"
+        - name: rollout.minReadySeconds
+          value: "10"
+        - name: rollout.terminationGracePeriodSeconds
+          value: "30"
+        - name: rollout.dnsPolicy
+          value: "ClusterFirst"
+        
+        # Blue-Green specific values
+        - name: blueGreen.activeService
+          value: "vitalstream-prod-backend-active"
+        - name: blueGreen.previewService
+          value: "vitalstream-prod-backend-preview"
+        - name: blueGreen.canaryService
+          value: "vitalstream-prod-backend-canary"
+        - name: blueGreen.headlessService
+          value: "vitalstream-prod-backend-headless"
+        
+        # Values object for complex configurations
+      valuesObject:
+        global:
+          environment: production
+          domain: vitalstream.com
+          imageRegistry: ghcr.io/vitalstream
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            readOnlyRootFilesystem: true
+        
+        backend:
+          enabled: true
+          replicaCount: 3
+          image:
+            repository: backend
+            tag: v1.0.0
+            sha: abc123def456
+            pullPolicy: IfNotPresent
+          
+          strategy:
+            type: BlueGreen
+            rollout:
+              autoPromotionEnabled: false
+              scaleDownDelay: 300
+              prePromotionDelay: 60
+              previewReplicaCount: 1
+              canary:
+                enabled: false
+                steps:
+                - setWeight: 10
+                - setWeight: 25
+                - setWeight: 50
+                - setWeight: 100
+          
+          service:
+            type: ClusterIP
+            sessionAffinity: None
+            httpPort: 8000
+            metricsPort: 8000
+            annotations:
+              rollouts.argoproj.io/service-type: active
+              prometheus.io/scrape: "true"
+              prometheus.io/port: "8000"
+              prometheus.io/path: "/metrics"
+          
+          headlessService:
+            enabled: true
+          
+          slo:
+            errorRate: 0.01
+            latencyP95: 0.5
+            availability: 0.999
+            throughput: 100
+          
+          healthChecks:
+            liveness:
+              initialDelaySeconds: 30
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 3
+              successThreshold: 1
+            readiness:
+              initialDelaySeconds: 5
+              periodSeconds: 5
+              timeoutSeconds: 3
+              failureThreshold: 3
+              successThreshold: 1
+            startup:
+              initialDelaySeconds: 10
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 30
+              successThreshold: 1
+          
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 1Gi
+            limits:
+              cpu: 4000m
+              memory: 4Gi
+          
+          nodeSelector:
+            node-type: application
+            performance-tier: high
+          
+          tolerations:
+          - key: application
+            operator: Equal
+            value: "true"
+            effect: NoSchedule
+          
+          priorityClassName: production-high
+          
+          env:
+          - name: DEPLOYMENT_STRATEGY
+            value: blue-green
+          - name: ENVIRONMENT
+            value: production
+          - name: SERVICE_NAME
+            value: vitalstream-prod-backend
+          - name: NAMESPACE
+            value: vitalstream-prod
+          - name: POD_COLOR
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.labels['strategy']
+          - name: ROLLOUT_REVISION
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['rollouts.argoproj.io/revision']
+          
+          volumeMounts: []
+          volumes: []
+          imagePullSecrets: []
+          
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              drop:
+              - ALL
+          
+          annotations:
+            rollouts.argoproj.io/managed-by: argo-rollouts
+            rollouts.argoproj.io/strategy: blue-green
+            rollouts.argoproj.io/traffic-routing: enabled
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "8000"
+            prometheus.io/path: "/metrics"
+            healthcheck.argoproj.io/period: "30s"
+            healthcheck.argoproj.io/timeout: "10s"
+            healthcheck.argoproj.io/failure-threshold: "3"
+            healthcheck.argoproj.io/success-threshold: "1"
+          
+          labels:
+            strategy: blue-green
+            version: v1.0.0
+            rollouts-pod-template-hash: ""
+            service-type: active
+            traffic-role: production
+            app.kubernetes.io/component: backend
+            app.kubernetes.io/part-of: vitalstream
+            app.kubernetes.io/managed-by: argo-rollouts
+            app.kubernetes.io/created-by: argocd
+          
+          revisionHistoryLimit: 10
+          progressDeadlineSeconds: 600
+          minReadySeconds: 10
+          terminationGracePeriodSeconds: 30
+          dnsPolicy: ClusterFirst
+          hostAliases: []
+        
+        monitoring:
+          enabled: true
+          serviceMonitor:
+            enabled: true
+            interval: 30s
+            scrapeTimeout: 10s
+            labels:
+              release: prometheus-prod
+              team: platform
+              environment: production
+            annotations:
+              prometheus.io/scrape: "true"
+              prometheus.io/port: "8000"
+              prometheus.io/path: "/metrics"
+        
+        networkPolicy:
+          enabled: true
+          ingress:
+          - from:
+            - namespaceSelector:
+                matchLabels:
+                  name: ingress-nginx
+            ports:
+            - protocol: TCP
+              port: 8000
+          - from:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/component: frontend
+            ports:
+            - protocol: TCP
+              port: 8000
+          egress:
+          - to: []
+            ports:
+            - protocol: UDP
+              port: 53
+            - protocol: TCP
+              port: 53
+            - protocol: TCP
+              port: 443
+            - protocol: TCP
+              port: 80
+          - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: postgresql
+            ports:
+            - protocol: TCP
+              port: 5432
+          - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: redis
+            ports:
+            - protocol: TCP
+              port: 6379
+        
+        podDisruptionBudget:
+          enabled: true
+          backend:
+            minAvailable: 2
+            maxUnavailable: 1
+        
+        security:
+          podSecurityStandards:
+            enforced: true
+            level: restricted
+          imagePolicies:
+            allowPrivileged: false
+            allowRoot: false
+            readOnlyRootFilesystem: true
+        
+        backup:
+          enabled: true
+          schedule: "0 2 * * *"
+          retention: "90d"
+          storageClass: standard
+          size: 1TB
+        
+        ingress:
+          enabled: true
+          className: nginx
+          annotations:
+            nginx.ingress.kubernetes.io/ssl-redirect: "true"
+            nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+            nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+            nginx.ingress.kubernetes.io/rate-limit: "500"
+            nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+            nginx.ingress.kubernetes.io/rate-limit-burst: "1000"
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+          hosts:
+          - host: api.vitalstream.com
+            paths:
+            - path: /api
+              pathType: Prefix
+              service: backend-active
+              port: 8000
+            - path: /ws
+              pathType: Prefix
+              service: websocketService
+              port: 8002
+          tls:
+          - secretName: vitalstream-prod-tls
+            hosts:
+            - api.vitalstream.com
+        
+        analysisTemplates:
+          enabled: true
+          smokeTests:
+            enabled: true
+            timeout: 300
+            retryCount: 3
+            parallelism: 1
+            failureThreshold: 1
+            successThreshold: 1
+          sloAnalysis:
+            enabled: true
+            errorRate: 0.01
+            latencyP95: 0.5
+            availability: 0.999
+            throughput: 100
+            prometheusEndpoint: http://prometheus.monitoring.svc.cluster.local:9090
+            queryTimeout: 30
+            queryInterval: 5m
+            evaluationWindow: 10m
+          prePromotion:
+            enabled: true
+            templates:
+            - smoke-tests
+            - slo-analysis
+          postPromotion:
+            enabled: true
+            templates:
+            - slo-analysis
+        
+        blueGreen:
+          activeService: vitalstream-prod-backend-active
+          previewService: vitalstream-prod-backend-preview
+          canaryService: vitalstream-prod-backend-canary
+          headlessService: vitalstream-prod-backend-headless
+          autoPromotionEnabled: false
+          scaleDownDelay: 300
+          prePromotionDelay: 60
+          previewReplicaCount: 1
+          trafficRouting:
+            loadBalancer:
+              type: nginx
+              healthCheck:
+                path: /health
+                port: 8000
+                interval: 30s
+                timeout: 10s
+                successThreshold: 3
+                failureThreshold: 3
+            canary:
+              enabled: false
+              steps:
+              - setWeight: 10
+              - setWeight: 25
+              - setWeight: 50
+              - setWeight: 100
+          antiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                  - key: rollouts-pod-template-hash
+                    operator: Exists
+                topologyKey: kubernetes.io/hostname
+            requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: backend
+              topologyKey: kubernetes.io/hostname
+        
+        rollout:
+          revisionHistoryLimit: 10
+          progressDeadlineSeconds: 600
+          minReadySeconds: 10
+          terminationGracePeriodSeconds: 30
+          dnsPolicy: ClusterFirst
+          hostAliases: []
+        
+        sealedSecrets:
+          enabled: true
+          namespace: vitalstream-prod
+        
+        postgresql:
+          enabled: true
+          primary:
+            persistence:
+              enabled: true
+              size: 1000Gi
+              storageClass: fast-ssd
+            resources:
+              requests:
+                cpu: 2000m
+                memory: 4Gi
+              limits:
+                cpu: 8000m
+                memory: 16Gi
+          auth:
+            existingSecret: vitalstream-secrets
+            secretKeys:
+              adminPasswordKey: database-password
+        
+        redis:
+          enabled: true
+          master:
+            persistence:
+              enabled: true
+              size: 100Gi
+              storageClass: fast-ssd
+            resources:
+              requests:
+                cpu: 1000m
+                memory: 2Gi
+              limits:
+                cpu: 4000m
+                memory: 8Gi
+          auth:
+            existingSecret: vitalstream-secrets
+            existingSecretPasswordKey: redis-password
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vitalstream-prod
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+    managedNamespaceMetadata:
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        environment: production
+        project: vitalstream
+        deployment-strategy: blue-green
+      annotations:
+        argocd.argoproj.io/sync-options: CreateNamespace=true,PrunePropagationPolicy=foreground,PruneLast=true
+        rollouts.argoproj.io/managed-by: "argo-rollouts"
+        rollouts.argoproj.io/strategy: "blue-green"
+  
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+      - /spec/replicas  # Ignore HPA-managed replicas
+  - group: argoproj.io
+    kind: Rollout
+    jsonPointers:
+      - /spec/replicas  # Ignore HPA-managed replicas
+      - /status  # Ignore status differences
+  - group: ""
+    kind: Secret
+    jsonPointers:
+      - /data/ca.crt  # Ignore certificate changes
+      - /data/tls.crt  # Ignore TLS certificate changes
+  - group: ""
+    kind: ConfigMap
+    jsonPointers:
+      - /data/kube-root-ca.crt  # Ignore CA bundle changes
+  
+  # Health assessment
+  health:
+    status: Healthy
+    # Custom health checks
+    customHealthChecks:
+    - name: backend-active-health
+      check:
+        http:
+          url: https://api.vitalstream.com/health
+          expectedStatus: 200
+          timeoutSeconds: 30
+    - name: backend-preview-health
+      check:
+        http:
+          url: http://vitalstream-prod-backend-preview.vitalstream-prod.svc.cluster.local:8000/health
+          expectedStatus: 200
+          timeoutSeconds: 30
+    - name: database-health
+      check:
+        exec:
+          command:
+          - /bin/sh
+          - -c
+          - "pg_isready -h vitalstream-prod-postgresql -p 5432 -U postgres"
+          timeoutSeconds: 10
+    - name: redis-health
+      check:
+        exec:
+          command:
+          - /bin/sh
+          - -c
+          - "redis-cli -h vitalstream-prod-redis-master -p 6379 ping"
+          timeoutSeconds: 10
+  
+  # Sync waves for ordered deployment
+  syncWaves:
+    - name: infrastructure
+      resources:
+        - group: ""
+          kind: Namespace
+        - group: ""
+          kind: ConfigMap
+        - group: ""
+          kind: Secret
+        - group: rbac.authorization.k8s.io
+          kind: Role
+        - group: rbac.authorization.k8s.io
+          kind: RoleBinding
+    - name: storage
+      resources:
+        - group: ""
+          kind: PersistentVolumeClaim
+        - group: apps
+          kind: StatefulSet
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+        - group: apps
+          kind: StatefulSet
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+    - name: backend-services
+      resources:
+        - group: argoproj.io
+          kind: Rollout
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+        - group: ""
+          kind: Service
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+              service-type: active
+        - group: ""
+          kind: Service
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+              service-type: preview
+    - name: monitoring
+      resources:
+        - group: monitoring.coreos.com
+          kind: ServiceMonitor
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+        - group: ""
+          kind: Service
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: monitoring
+    - name: ingress
+      resources:
+        - group: networking.k8s.io
+          kind: Ingress
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: backend
