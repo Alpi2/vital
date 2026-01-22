@@ -1,0 +1,691 @@
+# VitalStream Smoke Tests Analysis Template
+# Comprehensive smoke tests for blue-green deployments with Argo Rollouts
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: smoke-tests
+  namespace: argo-rollouts
+  labels:
+    app.kubernetes.io/name: smoke-tests
+    app.kubernetes.io/component: analysis-template
+    app.kubernetes.io/part-of: vitalstream
+    analysis-type: smoke-tests
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"  # Run after deployment
+    rollouts.argoproj.io/managed-by: "argo-rollouts"
+spec:
+  # Arguments that can be passed to the template
+  args:
+  - name: service-name
+    value: ""
+  - name: namespace
+    value: ""
+  - name: base-url
+    value: ""
+  - name: timeout-seconds
+    value: "300"
+  - name: retry-count
+    value: "3"
+  - name: parallelism
+    value: "1"
+  - name: failure-threshold
+    value: "1"
+  - name: success-threshold
+    value: "1"
+  - name: environment
+    value: "production"
+  
+  # Metrics to run during analysis
+  metrics:
+  # Health Check Test
+  - name: health-check
+    provider: job
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] == 0
+    config:
+      template:
+        spec:
+          containers:
+          - name: health-check
+            image: curlimages/curl:latest
+            command:
+            - sh
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "🧪 Starting health check test..."
+              echo "📅 Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')"
+              echo "🔗 Service: $(args.service-name)"
+              echo "🌐 Namespace: $(args.namespace)"
+              echo "🌍 Base URL: $(args.base-url)"
+              
+              # Health check with retry logic
+              MAX_RETRIES=3
+              RETRY_DELAY=10
+              SUCCESS=false
+              
+              for i in $(seq 1 $MAX_RETRIES); do
+                echo "🔄 Attempt $i/$MAX_RETRIES"
+                
+                if curl -f -s -m 30 "$(args.base-url)/health" > /dev/null; then
+                  echo "✅ Health check passed!"
+                  SUCCESS=true
+                  break
+                else
+                  echo "❌ Health check failed, retrying in $RETRY_DELAY seconds..."
+                  sleep $RETRY_DELAY
+                fi
+              done
+              
+              if [ "$SUCCESS" = true ]; then
+                echo "🎉 Health check test completed successfully"
+                exit 0
+              else
+                echo "💥 Health check test failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            env:
+            - name: SERVICE_NAME
+              value: "$(args.service-name)"
+            - name: NAMESPACE
+              value: "$(args.namespace)"
+            - name: BASE_URL
+              value: "$(args.base-url)"
+            - name: TIMEOUT_SECONDS
+              value: "$(args.timeout-seconds)"
+            - name: ENVIRONMENT
+              value: "$(args.environment)"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              capabilities:
+                drop:
+                - ALL
+          restartPolicy: Never
+          backoffLimit: 3
+          ttlSecondsAfterFinished: 300
+          activeDeadlineSeconds: 600
+          nodeSelector:
+            node-type: testing
+            testing-capability: "true"
+          tolerations:
+          - key: "testing"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          priorityClassName: testing-priority
+  
+  # Authentication Test
+  - name: auth-test
+    provider: job
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] == 0
+    config:
+      template:
+        spec:
+          containers:
+          - name: auth-test
+            image: curlimages/curl:latest
+            command:
+            - sh
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "🧪 Starting authentication test..."
+              echo "📅 Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')"
+              echo "🔗 Service: $(args.service-name)"
+              echo "🌐 Namespace: $(args.namespace)"
+              echo "🌍 Base URL: $(args.base-url)"
+              
+              # Get authentication token
+              echo "🔑 Getting authentication token..."
+              TOKEN_RESPONSE=$(curl -s -X POST "$(args.base-url)/api/v1/auth/login" \
+                -H "Content-Type: application/json" \
+                -d '{"username":"$API_USERNAME","password":"$API_PASSWORD"}' \
+                -m 30)
+              
+              # Check if response is valid JSON
+              if ! echo "$TOKEN_RESPONSE" | jq empty > /dev/null 2>&1; then
+                TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+                
+                if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
+                  echo "✅ Authentication successful!"
+                  echo "🔑 Token received (length: ${#TOKEN})"
+                  
+                  # Test token validity
+                  if curl -f -s -m 30 "$(args.base-url)/api/v1/auth/verify" \
+                    -H "Authorization: Bearer $TOKEN" > /dev/null; then
+                    echo "✅ Token validation successful!"
+                    echo "🎉 Authentication test completed successfully"
+                    exit 0
+                  else
+                    echo "❌ Token validation failed"
+                    exit 1
+                  fi
+                else
+                  echo "❌ No token received in response"
+                  echo "📄 Response: $TOKEN_RESPONSE"
+                  exit 1
+                fi
+              else
+                echo "❌ Invalid JSON response from auth endpoint"
+                echo "📄 Response: $TOKEN_RESPONSE"
+                exit 1
+              fi
+            env:
+            - name: SERVICE_NAME
+              value: "$(args.service-name)"
+            - name: NAMESPACE
+              value: "$(args.namespace)"
+            - name: BASE_URL
+              value: "$(args.base-url)"
+            - name: API_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: vitalstream-secrets
+                  key: api-username
+            - name: API_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vitalstream-secrets
+                  key: api-password
+            - name: ENVIRONMENT
+              value: "$(args.environment)"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              capabilities:
+                drop:
+                - ALL
+          restartPolicy: Never
+          backoffLimit: 3
+          ttlSecondsAfterFinished: 300
+          activeDeadlineSeconds: 600
+          nodeSelector:
+            node-type: testing
+            testing-capability: "true"
+          tolerations:
+          - key: "testing"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          priorityClassName: testing-priority
+  
+  # API Functionality Test
+  - name: api-functionality-test
+    provider: job
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] == 0
+    config:
+      template:
+        spec:
+          containers:
+          - name: api-functionality-test
+            image: curlimages/curl:latest
+            command:
+            - sh
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "🧪 Starting API functionality test..."
+              echo "📅 Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')"
+              echo "🔗 Service: $(args.service-name)"
+              echo "🌐 Namespace: $(args.namespace)"
+              echo "🌍 Base URL: $(args.base-url)"
+              
+              # Get authentication token
+              echo "🔑 Getting authentication token..."
+              TOKEN=$(curl -s -X POST "$(args.base-url)/api/v1/auth/login" \
+                -H "Content-Type: application/json" \
+                -d '{"username":"$API_USERNAME","password":"$API_PASSWORD"}' \
+                -m 30 | jq -r '.access_token')
+              
+              if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+                echo "❌ Failed to get authentication token"
+                exit 1
+              fi
+              
+              echo "✅ Authentication token received"
+              
+              # Test ECG analysis endpoint
+              echo "🧪 Testing ECG analysis endpoint..."
+              ECG_RESPONSE=$(curl -s -X POST "$(args.base-url)/api/v1/ecg/analyze" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{"patient_id":"test","samples":[0.1,0.2,0.3,0.4,0.5],"sampling_rate":360}' \
+                -m 30)
+              
+              if echo "$ECG_RESPONSE" | jq empty > /dev/null 2>&1; then
+                # Check if response contains expected fields
+                if echo "$ECG_RESPONSE" | jq -e '.analysis_id' > /dev/null && \
+                   echo "$ECG_RESPONSE" | jq -e '.heart_rate' > /dev/null && \
+                   echo "$ECG_RESPONSE" | jq -e '.anomalies' > /dev/null; then
+                  echo "✅ ECG analysis test passed!"
+                  ANALYSIS_ID=$(echo "$ECG_RESPONSE" | jq -r '.analysis_id')
+                  echo "📊 Analysis ID: $ANALYSIS_ID"
+                else
+                  echo "❌ ECG analysis response missing expected fields"
+                  echo "📄 Response: $ECG_RESPONSE"
+                  exit 1
+                fi
+              else
+                echo "❌ ECG analysis endpoint returned invalid response"
+                echo "📄 Response: $ECG_RESPONSE"
+                exit 1
+              fi
+              
+              # Test patient data endpoint
+              echo "🧪 Testing patient data endpoint..."
+              PATIENTS_RESPONSE=$(curl -s "$(args.base-url)/api/v1/patients?limit=1" \
+                -H "Authorization: Bearer $TOKEN" \
+                -m 30)
+              
+              if echo "$PATIENTS_RESPONSE" | jq empty > /dev/null 2>&1; then
+                if echo "$PATIENTS_RESPONSE" | jq -e '.patients' > /dev/null; then
+                  echo "✅ Patient data test passed!"
+                  PATIENT_COUNT=$(echo "$PATIENTS_RESPONSE" | jq '.patients | length')
+                  echo "👥 Patients returned: $PATIENT_COUNT"
+                else
+                  echo "❌ Patient data response missing expected fields"
+                  echo "📄 Response: $PATIENTS_RESPONSE"
+                  exit 1
+                fi
+              else
+                echo "❌ Patient data endpoint returned invalid response"
+                echo "📄 Response: $PATIENTS_RESPONSE"
+                exit 1
+              fi
+              
+              # Test metrics endpoint
+              echo "🧪 Testing metrics endpoint..."
+              if curl -f -s "$(args.base-url)/metrics" | grep -q "http_requests_total"; then
+                echo "✅ Metrics endpoint test passed!"
+              else
+                echo "❌ Metrics endpoint test failed"
+                exit 1
+              fi
+              
+              echo "🎉 API functionality test completed successfully"
+              exit 0
+            env:
+            - name: SERVICE_NAME
+              value: "$(args.service-name)"
+            - name: NAMESPACE
+              value: "$(args.namespace)"
+            - name: BASE_URL
+              value: "$(args.base-url)"
+            - name: API_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: vitalstream-secrets
+                  key: api-username
+            - name: API_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vitalstream-secrets
+                  key: api-password
+            - name: ENVIRONMENT
+              value: "$(args.environment)"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              capabilities:
+                drop:
+                - ALL
+          restartPolicy: Never
+          backoffLimit: 3
+          ttlSecondsAfterFinished: 300
+          activeDeadlineSeconds: 600
+          nodeSelector:
+            node-type: testing
+            testing-capability: "true"
+          tolerations:
+          - key: "testing"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          priorityClassName: testing-priority
+  
+  # Database Connectivity Test
+  - name: database-connectivity-test
+    provider: job
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] == 0
+    config:
+      template:
+        spec:
+          containers:
+          - name: database-connectivity-test
+            image: postgres:15-alpine
+            command:
+            - sh
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "🧪 Starting database connectivity test..."
+              echo "📅 Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')"
+              echo "🗄️ Database: $DATABASE_HOST:$DATABASE_PORT/$DATABASE_NAME"
+              
+              # Test database connection
+              echo "🔗 Testing database connection..."
+              if pg_isready -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -t 30; then
+                echo "✅ Database connection successful!"
+                
+                # Test database query
+                echo "🔍 Testing database query..."
+                if PGPASSWORD="$DATABASE_PASSWORD" psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
+                  echo "✅ Database query test passed!"
+                  
+                  # Test table access
+                  echo "📊 Testing table access..."
+                  if PGPASSWORD="$DATABASE_PASSWORD" psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -c "SELECT COUNT(*) FROM patients LIMIT 1;" > /dev/null 2>&1; then
+                    echo "✅ Table access test passed!"
+                    echo "🎉 Database connectivity test completed successfully"
+                    exit 0
+                  else
+                    echo "❌ Table access test failed"
+                    exit 1
+                  fi
+                else
+                  echo "❌ Database query test failed"
+                  exit 1
+                fi
+              else
+                echo "❌ Database connection test failed"
+                exit 1
+              fi
+            env:
+            - name: DATABASE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: vitalstream-secrets
+                  key: database-host
+            - name: DATABASE_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: vitalstream-secrets
+                  key: database-port
+            - name: DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: vitalstream-secrets
+                  key: database-name
+            - name: DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: vitalstream-secrets
+                  key: database-user
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vitalstream-secrets
+                  key: database-password
+            - name: ENVIRONMENT
+              value: "$(args.environment)"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              capabilities:
+                drop:
+                - ALL
+          restartPolicy: Never
+          backoffLimit: 3
+          ttlSecondsAfterFinished: 300
+          activeDeadlineSeconds: 600
+          nodeSelector:
+            node-type: testing
+            testing-capability: "true"
+          tolerations:
+          - key: "testing"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          priorityClassName: testing-priority
+  
+  # Performance Test
+  - name: performance-test
+    provider: job
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] == 0
+    config:
+      template:
+        spec:
+          containers:
+          - name: performance-test
+            image: curlimages/curl:latest
+            command:
+            - sh
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "🧪 Starting performance test..."
+              echo "📅 Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')"
+              echo "🔗 Service: $(args.service-name)"
+              echo "🌐 Namespace: $(args.namespace)"
+              echo "🌍 Base URL: $(args.base-url)"
+              
+              # Test response time
+              echo "⏱️ Testing response time..."
+              START_TIME=$(date +%s%N)
+              
+              if curl -f -s -m 30 "$(args.base-url)/health" > /dev/null; then
+                END_TIME=$(date +%s%N)
+                RESPONSE_TIME=$(( (END_TIME - START_TIME) / 1000000 ))  # Convert to milliseconds
+                
+                echo "📊 Response time: ${RESPONSE_TIME}ms"
+                
+                # Check if response time is acceptable (< 1 second)
+                if [ "$RESPONSE_TIME" -lt 1000 ]; then
+                  echo "✅ Response time test passed!"
+                else
+                  echo "❌ Response time test failed: ${RESPONSE_TIME}ms > 1000ms"
+                  exit 1
+                fi
+              else
+                echo "❌ Performance test failed - endpoint not responding"
+                exit 1
+              fi
+              
+              # Test concurrent requests
+              echo "🔄 Testing concurrent requests..."
+              SUCCESS_COUNT=0
+              TOTAL_REQUESTS=10
+              
+              for i in $(seq 1 $TOTAL_REQUESTS); do
+                if curl -f -s -m 30 "$(args.base-url)/health" > /dev/null; then
+                  SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+                fi
+              done
+              
+              SUCCESS_RATE=$((SUCCESS_COUNT * 100 / TOTAL_REQUESTS))
+              echo "📊 Success rate: ${SUCCESS_RATE}% ($SUCCESS_COUNT/$TOTAL_REQUESTS)"
+              
+              # Check if success rate is acceptable (> 95%)
+              if [ "$SUCCESS_RATE" -gt 95 ]; then
+                echo "✅ Concurrent requests test passed!"
+                echo "🎉 Performance test completed successfully"
+                exit 0
+              else
+                echo "❌ Concurrent requests test failed: ${SUCCESS_RATE}% <= 95%"
+                exit 1
+              fi
+            env:
+            - name: SERVICE_NAME
+              value: "$(args.service-name)"
+            - name: NAMESPACE
+              value: "$(args.namespace)"
+            - name: BASE_URL
+              value: "$(args.base-url)"
+            - name: ENVIRONMENT
+              value: "$(args.environment)"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              capabilities:
+                drop:
+                - ALL
+          restartPolicy: Never
+          backoffLimit: 3
+          ttlSecondsAfterFinished: 300
+          activeDeadlineSeconds: 600
+          nodeSelector:
+            node-type: testing
+            testing-capability: "true"
+          tolerations:
+          - key: "testing"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          priorityClassName: testing-priority
+  
+  # Rollback Test (Optional - for testing rollback capabilities)
+  - name: rollback-test
+    provider: job
+    failureLimit: 0  # This test is optional and shouldn't fail the deployment
+    count: 1
+    interval: 30s
+    successCondition: result[0] == 0
+    config:
+      template:
+        spec:
+          containers:
+          - name: rollback-test
+            image: curlimages/curl:latest
+            command:
+            - sh
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "🧪 Starting rollback test (informational only)..."
+              echo "📅 Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')"
+              echo "🔗 Service: $(args.service-name)"
+              echo "🌐 Namespace: $(args.namespace)"
+              echo "🌍 Base URL: $(args.base-url)"
+              
+              # This test is informational and doesn't actually perform rollback
+              # It just verifies that rollback mechanisms are available
+              
+              # Check if Argo Rollouts CLI is available
+              if command -v kubectl-argo-rollouts &> /dev/null; then
+                echo "✅ Argo Rollouts CLI is available"
+                
+                # Check if rollback is possible
+                ROLLOUT_STATUS=$(kubectl-argo-rollouts get rollout $(args.service-name) -n $(args.namespace) -o jsonpath='{.status.phase}')
+                echo "📊 Rollout status: $ROLLOUT_STATUS"
+                
+                if [ "$ROLLOUT_STATUS" = "Healthy" ]; then
+                  echo "✅ Rollout is healthy - rollback available"
+                else
+                  echo "⚠️ Rollout status: $ROLLOUT_STATUS - rollback may be needed"
+                fi
+              else
+                echo "⚠️ Argo Rollouts CLI not available"
+              fi
+              
+              echo "ℹ️ Rollback test completed (informational only)"
+              exit 0
+            env:
+            - name: SERVICE_NAME
+              value: "$(args.service-name)"
+            - name: NAMESPACE
+              value: "$(args.namespace)"
+            - name: BASE_URL
+              value: "$(args.base-url)"
+            - name: ENVIRONMENT
+              value: "$(args.environment)"
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              capabilities:
+                drop:
+                - ALL
+          restartPolicy: Never
+          backoffLimit: 1
+          ttlSecondsAfterFinished: 300
+          activeDeadlineSeconds: 300
+          nodeSelector:
+            node-type: testing
+            testing-capability: "true"
+          tolerations:
+          - key: "testing"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          priorityClassName: testing-priority

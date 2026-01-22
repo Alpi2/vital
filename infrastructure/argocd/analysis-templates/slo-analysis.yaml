@@ -1,0 +1,407 @@
+# VitalStream SLO Analysis Template
+# Service Level Objective monitoring for blue-green deployments
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: slo-analysis
+  namespace: argo-rollouts
+  labels:
+    app.kubernetes.io/name: slo-analysis
+    app.kubernetes.io/component: analysis-template
+    app.kubernetes.io/part-of: vitalstream
+    analysis-type: slo-analysis
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"  # Run after smoke tests
+    rollouts.argoproj.io/managed-by: "argo-rollouts"
+spec:
+  # Arguments that can be passed to the template
+  args:
+  - name: service-name
+    value: ""
+  - name: namespace
+    value: ""
+  - name: slo-error-rate
+    value: "0.01"  # 1% error rate threshold
+  - name: slo-latency-p95
+    value: "0.5"   # 500ms P95 latency threshold
+  - name: slo-availability
+    value: "0.999"  # 99.9% availability threshold
+  - name: slo-throughput
+    value: "100"    # 100 requests per second minimum
+  - name: prometheus-endpoint
+    value: "http://prometheus.monitoring.svc.cluster.local:9090"
+  - name: query-timeout
+    value: "30"
+  - name: query-interval
+    value: "5m"
+  - name: evaluation-window
+    value: "10m"
+  - name: failure-threshold
+    value: "1"
+  - name: success-threshold
+    value: "1"
+  - name: environment
+    value: "production"
+  
+  # Metrics to run during analysis
+  metrics:
+  # Error Rate SLO Check
+  - name: error-rate-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < args.slo-error-rate
+    config:
+      queries:
+      - name: error-rate
+        query: |
+          sum(rate(http_requests_total{service="$(args.service-name)",status=~"5.."}[$(args.query-interval)])) / 
+          sum(rate(http_requests_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Latency P95 SLO Check
+  - name: latency-p95-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < args.slo-latency-p95
+    config:
+      queries:
+      - name: latency-p95
+        query: |
+          histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket{service="$(args.service-name)"}[$(args.query-interval)])) by (le))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Availability SLO Check
+  - name: availability-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] >= args.slo-availability
+    config:
+      queries:
+      - name: availability
+        query: |
+          sum(rate(http_requests_total{service="$(args.service-name)",status!~"5.."}[$(args.query-interval)])) / 
+          sum(rate(http_requests_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Throughput SLO Check
+  - name: throughput-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] >= args.slo-throughput
+    config:
+      queries:
+      - name: throughput
+        query: |
+          sum(rate(http_requests_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Memory Usage SLO Check
+  - name: memory-usage-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < 0.8  # 80% memory usage threshold
+    config:
+      queries:
+      - name: memory-usage
+        query: |
+          sum(container_memory_usage_bytes{service="$(args.service-name)"}) / 
+          sum(container_spec_memory_limit_bytes{service="$(args.service-name)"})
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # CPU Usage SLO Check
+  - name: cpu-usage-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < 0.8  # 80% CPU usage threshold
+    config:
+      queries:
+      - name: cpu-usage
+        query: |
+          sum(rate(container_cpu_usage_seconds_total{service="$(args.service-name)"}[$(args.query-interval)])) / 
+          sum(container_spec_cpu_quota{service="$(args.service-name)"})
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Custom Business Metrics SLO Check
+  - name: business-metrics-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] > 0  # At least some business metrics should be present
+    config:
+      queries:
+      - name: ecg-analysis-rate
+        query: |
+          sum(rate(ecg_analysis_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      - name: patient-data-access-rate
+        query: |
+          sum(rate(patient_data_access_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      - name: alarm-generation-rate
+        query: |
+          sum(rate(alarm_generation_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Database Performance SLO Check
+  - name: database-performance-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < 1.0  # Average query time < 1 second
+    config:
+      queries:
+      - name: database-query-time
+        query: |
+          histogram_quantile(0.95, 
+            sum(rate(pg_stat_statements_mean_time_seconds{service="$(args.service-name)"}[$(args.query-interval)])) by (le))
+      - name: database-connection-count
+        query: |
+          sum(pg_stat_activity_count{service="$(args.service-name)"})
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # External Dependencies SLO Check
+  - name: external-dependencies-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < 0.05  # 5% external dependency error rate threshold
+    config:
+      queries:
+      - name: external-api-error-rate
+        query: |
+          sum(rate(http_requests_total{service="$(args.service-name)",external="true",status=~"5.."}[$(args.query-interval)])) / 
+          sum(rate(http_requests_total{service="$(args.service-name)",external="true"}[$(args.query-interval)]))
+      - name: redis-error-rate
+        query: |
+          sum(rate(redis_commands_failed_total{service="$(args.service-name)"}[$(args.query-interval)])) / 
+          sum(rate(redis_commands_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Security SLO Check
+  - name: security-slo
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < 0.001  # 0.1% security event rate threshold
+    config:
+      queries:
+      - name: authentication-failure-rate
+        query: |
+          sum(rate(authentication_failures_total{service="$(args.service-name)"}[$(args.query-interval)])) / 
+          sum(rate(authentication_attempts_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      - name: authorization-failure-rate
+        query: |
+          sum(rate(authorization_failures_total{service="$(args.service-name)"}[$(args.query-interval)])) / 
+          sum(rate(authorization_attempts_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Comprehensive Health Score
+  - name: health-score
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] >= 0.9  # 90% overall health score threshold
+    config:
+      queries:
+      - name: overall-health-score
+        query: |
+          (
+            # Error rate component (30% weight)
+            (1 - (sum(rate(http_requests_total{service="$(args.service-name)",status=~"5.."}[$(args.query-interval)]) / 
+                   sum(rate(http_requests_total{service="$(args.service-name)"}[$(args.query-interval)]))) * 0.3 +
+            # Latency component (25% weight)
+            (1 - min(1, histogram_quantile(0.95, 
+                   sum(rate(http_request_duration_seconds_bucket{service="$(args.service-name)"}[$(args.query-interval)])) by (le)) / $(args.slo-latency-p95))) * 0.25 +
+            # Availability component (25% weight)
+            (sum(rate(http_requests_total{service="$(args.service-name)",status!~"5.."}[$(args.query-interval)]) / 
+             sum(rate(http_requests_total{service="$(args.service-name)"}[$(args.query-interval)]))) * 0.25 +
+            # Resource usage component (20% weight)
+            (1 - max(
+              sum(container_memory_usage_bytes{service="$(args.service-name)"}) / sum(container_spec_memory_limit_bytes{service="$(args.service-name)"}),
+              sum(rate(container_cpu_usage_seconds_total{service="$(args.service-name)"}[$(args.query-interval)])) / sum(container_spec_cpu_quota{service="$(args.service-name)"})
+            )) * 0.2
+          )
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Trend Analysis
+  - name: trend-analysis
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] > 0  # Should have positive trend
+    config:
+      queries:
+      - name: request-trend
+        query: |
+          (sum(rate(http_requests_total{service="$(args.service-name)"}[$(args.query-interval)])) - 
+           sum(rate(http_requests_total{service="$(args.service-name)"}[1h]))) / 
+           sum(rate(http_requests_total{service="$(args.service-name)"}[1h]))
+      - name: error-trend
+        query: |
+          (sum(rate(http_requests_total{service="$(args.service-name)",status=~"5.."}[$(args.query-interval)])) - 
+           sum(rate(http_requests_total{service="$(args.service-name)",status=~"5.."}[1h]))) / 
+           sum(rate(http_requests_total{service="$(args.service-name)",status=~"5.."}[1h]))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Capacity Planning Metrics
+  - name: capacity-planning
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < 0.9  # Should not be at 90% capacity
+    config:
+      queries:
+      - name: memory-capacity
+        query: |
+          sum(container_memory_usage_bytes{service="$(args.service-name)"}) / 
+          sum(node_memory_MemTotal_bytes{kubernetes_node!~"master|control-plane"})
+      - name: cpu-capacity
+        query: |
+          sum(rate(container_cpu_usage_seconds_total{service="$(args.service-name)"}[$(args.query-interval)])) / 
+          sum(node_cpu_seconds_total{kubernetes_node!~"master|control-plane"})
+      - name: storage-capacity
+        query: |
+          sum(kubelet_volume_stats_used_bytes{service="$(args.service-name)"}) / 
+          sum(kubelet_volume_stats_capacity_bytes{service="$(args.service-name)"})
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Custom Alert Validation
+  - name: alert-validation
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] == 0  # Should have no critical alerts
+    config:
+      queries:
+      - name: critical-alerts
+        query: |
+          sum(ALERTS{service="$(args.service-name)",severity="critical",alertstate="firing"})
+      - name: warning-alerts
+        query: |
+          sum(ALERTS{service="$(args.service-name)",severity="warning",alertstate="firing"})
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # SLA Compliance Check
+  - name: sla-compliance
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] >= 0.995  # 99.5% SLA compliance
+    config:
+      queries:
+      - name: sla-compliance-rate
+        query: |
+          sum(rate(http_requests_total{service="$(args.service-name)",status!~"5.."}[$(args.query-interval)])) / 
+          sum(rate(http_requests_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      - name: sla-uptime
+        query: |
+          up{service="$(args.service-name)"}
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Performance Regression Detection
+  - name: performance-regression
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < 0.1  # Less than 10% performance degradation
+    config:
+      queries:
+      - name: latency-regression
+        query: |
+          (histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket{service="$(args.service-name)"}[$(args.query-interval)])) by (le)) - 
+           histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket{service="$(args.service-name)"}[1h])) by (le))) / 
+           histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket{service="$(args.service-name)"}[1h])) by (le))
+      - name: error-rate-regression
+        query: |
+          (sum(rate(http_requests_total{service="$(args.service-name)",status=~"5.."}[$(args.query-interval)]) / 
+           sum(rate(http_requests_total{service="$(args.service-name)"}[$(args.query-interval)]))) - 
+           (sum(rate(http_requests_total{service="$(args.service-name)",status=~"5.."}[1h]) / 
+            sum(rate(http_requests_total{service="$(args.service-name)"}[1h])))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # User Experience Metrics
+  - name: user-experience
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < 2.0  # Average user experience score < 2.0
+    config:
+      queries:
+      - name: user-satisfaction-score
+        query: |
+          sum(rate(user_satisfaction_score{service="$(args.service-name)"}[$(args.query-interval)])) / 
+          sum(rate(user_satisfaction_count{service="$(args.service-name)"}[$(args.query-interval)]))
+      - name: session-duration
+        query: |
+          histogram_quantile(0.95, 
+            sum(rate(session_duration_seconds_bucket{service="$(args.service-name)"}[$(args.query-interval)])) by (le))
+      - name: bounce-rate
+        query: |
+          sum(rate(session_bounce_total{service="$(args.service-name)"}[$(args.query-interval)])) / 
+          sum(rate(session_start_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
+  
+  # Cost Efficiency Metrics
+  - name: cost-efficiency
+    provider: prometheus
+    failureLimit: 1
+    count: 1
+    interval: 30s
+    successCondition: result[0] < 0.8  # Cost efficiency score < 0.8
+    config:
+      queries:
+      - name: cost-per-request
+        query: |
+          (sum(kube_pod_container_resource_requests{service="$(args.service-name)",resource="cpu"}) * 0.001) / 
+           sum(rate(http_requests_total{service="$(args.service-name)"}[$(args.query-interval)]))
+      - name: resource-utilization
+        query: |
+          (sum(container_memory_usage_bytes{service="$(args.service-name)"}) / 
+           sum(container_spec_memory_limit_bytes{service="$(args.service-name)"})) + 
+          (sum(rate(container_cpu_usage_seconds_total{service="$(args.service-name)"}[$(args.query-interval)])) / 
+           sum(container_spec_cpu_quota{service="$(args.service-name)"}))
+      address: "$(args.prometheus-endpoint)"
+      timeout: "$(args.query-timeout)"
