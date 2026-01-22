@@ -1,0 +1,387 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smoke-test-postsync-{{.Values.global.environment}}-{{.Release.Revision}}
+  namespace: {{.Release.Namespace}}
+  labels:
+    app.kubernetes.io/name: smoke-test-postsync
+    app.kubernetes.io/component: hook
+    app.kubernetes.io/part-of: vitalstream
+    environment: {{.Values.global.environment}}
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: "10"  # Run after all services
+    argocd.argoproj.io/hook-weight: "10"
+spec:
+  backoffLimit: 2
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: smoke-test-postsync
+        app.kubernetes.io/component: hook
+        app.kubernetes.io/part-of: vitalstream
+        environment: {{.Values.global.environment}}
+      annotations:
+        security.kubernetes.io/allow-privilege-escalation: "false"
+        security.kubernetes.io/read-only-root-filesystem: "true"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: vitalstream-testing
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      initContainers:
+      - name: wait-for-services
+        image: curlimages/curl:latest
+        command:
+          - sh
+          - -c
+          - |
+            set -euo pipefail
+            
+            echo "⏳ Waiting for services to be ready..."
+            
+            # Service endpoints
+            FRONTEND_URL="https://{{.Values.global.domain}}"
+            API_URL="https://api.{{.Values.global.domain}}"
+            WS_URL="wss://api.{{.Values.global.domain}}/ws"
+            
+            # Wait for frontend
+            echo "🌐 Checking frontend health..."
+            for i in {1..30}; do
+              if curl -f -s -m 10 "${FRONTEND_URL}/health" > /dev/null; then
+                echo "✅ Frontend is healthy"
+                break
+              else
+                echo "⏳ Waiting for frontend... ($i/30)"
+                sleep 10
+              fi
+            done
+            
+            # Wait for backend API
+            echo "🔧 Checking backend API health..."
+            for i in {1..30}; do
+              if curl -f -s -m 10 "${API_URL}/health" > /dev/null; then
+                echo "✅ Backend API is healthy"
+                break
+              else
+                echo "⏳ Waiting for backend API... ($i/30)"
+                sleep 10
+              fi
+            done
+            
+            # Wait for WebSocket
+            echo "🔌 Checking WebSocket connectivity..."
+            for i in {1..30}; do
+              if curl -f -s -m 10 "${API_URL}/ready" > /dev/null; then
+                echo "✅ WebSocket endpoint is ready"
+                break
+              else
+                echo "⏳ Waiting for WebSocket... ($i/30)"
+                sleep 10
+              fi
+            done
+            
+            echo "✅ All services are ready!"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+      
+      containers:
+      - name: smoke-tests
+        image: curlimages/curl:latest
+        command:
+          - sh
+          - -c
+          - |
+            set -euo pipefail
+            
+            echo "🧪 Starting smoke tests for {{.Values.global.environment}} environment..."
+            echo "📅 Test timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "🔄 Release revision: {{.Release.Revision}}"
+            
+            # Test configuration
+            FRONTEND_URL="https://{{.Values.global.domain}}"
+            API_URL="https://api.{{.Values.global.domain}}"
+            WS_URL="wss://api.{{.Values.global.domain}}/ws"
+            TEST_RESULTS_DIR="/test-results"
+            TEST_LOG="${TEST_RESULTS_DIR}/smoke-test-{{.Values.global.environment}}-{{.Release.Revision}}.log"
+            
+            # Create test results directory
+            mkdir -p "${TEST_RESULTS_DIR}"
+            
+            # Initialize test results
+            cat > "${TEST_RESULTS_DIR}/results.json" << EOF
+            {
+              "environment": "{{.Values.global.environment}}",
+              "release_revision": "{{.Release.Revision}}",
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "tests": {},
+              "summary": {
+                "total": 0,
+                "passed": 0,
+                "failed": 0,
+                "skipped": 0
+              }
+            }
+            EOF
+            
+            # Test counter
+            TOTAL_TESTS=0
+            PASSED_TESTS=0
+            FAILED_TESTS=0
+            
+            # Function to run test
+            run_test() {
+              local test_name="$1"
+              local test_command="$2"
+              local expected_status="$3"
+              
+              TOTAL_TESTS=$((TOTAL_TESTS + 1))
+              echo "🧪 Running test: ${test_name}"
+              
+              if eval "${test_command}"; then
+                echo "✅ PASSED: ${test_name}"
+                PASSED_TESTS=$((PASSED_TESTS + 1))
+                jq --arg name "${test_name}" --arg status "passed" '.tests[$name] = {"status": $status}' "${TEST_RESULTS_DIR}/results.json" > "${TEST_RESULTS_DIR}/results.tmp" && mv "${TEST_RESULTS_DIR}/results.tmp" "${TEST_RESULTS_DIR}/results.json"
+              else
+                echo "❌ FAILED: ${test_name}"
+                FAILED_TESTS=$((FAILED_TESTS + 1))
+                jq --arg name "${test_name}" --arg status "failed" '.tests[$name] = {"status": $status}' "${TEST_RESULTS_DIR}/results.json" > "${TEST_RESULTS_DIR}/results.tmp" && mv "${TEST_RESULTS_DIR}/results.tmp" "${TEST_RESULTS_DIR}/results.json"
+              fi
+            }
+            
+            # Test 1: Frontend Health Check
+            run_test "frontend-health" \
+              "curl -f -s -m 10 '${FRONTEND_URL}/health' | jq -e '.status == \"healthy\"'" \
+              "200"
+            
+            # Test 2: Frontend Accessibility
+            run_test "frontend-accessibility" \
+              "curl -f -s -m 10 '${FRONTEND_URL}/' | grep -q 'VitalStream'" \
+              "200"
+            
+            # Test 3: Backend API Health Check
+            run_test "backend-health" \
+              "curl -f -s -m 10 '${API_URL}/health' | jq -e '.status == \"healthy\"'" \
+              "200"
+            
+            # Test 4: Backend API Ready Check
+            run_test "backend-ready" \
+              "curl -f -s -m 10 '${API_URL}/ready' | jq -e '.ready == true'" \
+              "200"
+            
+            # Test 5: API Authentication Test
+            {{- if .Values.testing.auth.enabled }}
+            run_test "api-auth" \
+              "curl -f -s -m 10 -X POST '${API_URL}/auth/login' \
+                -H 'Content-Type: application/json' \
+                -d '{\"username\":\"test\",\"password\":\"test\"}' | jq -e '.access_token'" \
+              "200"
+            {{- else }}
+            echo "⏭️ Skipping API auth test (disabled)"
+            TOTAL_TESTS=$((TOTAL_TESTS + 1))
+            jq --arg name "api-auth" --arg status "skipped" '.tests[$name] = {"status": $status}' "${TEST_RESULTS_DIR}/results.json" > "${TEST_RESULTS_DIR}/results.tmp" && mv "${TEST_RESULTS_DIR}/results.tmp" "${TEST_RESULTS_DIR}/results.json"
+            {{- end }}
+            
+            # Test 6: Database Connectivity Test
+            run_test "database-connectivity" \
+              "curl -f -s -m 10 '${API_URL}/health/database' | jq -e '.database == \"connected\"'" \
+              "200"
+            
+            # Test 7: Redis Connectivity Test
+            run_test "redis-connectivity" \
+              "curl -f -s -m 10 '${API_URL}/health/redis' | jq -e '.redis == \"connected\"'" \
+              "200"
+            
+            # Test 8: WebSocket Connectivity Test
+            run_test "websocket-connectivity" \
+              "curl -f -s -m 10 '${API_URL}/health/websocket' | jq -e '.websocket == \"ready\"'" \
+              "200"
+            
+            # Test 9: Metrics Endpoint Test
+            run_test "metrics-endpoint" \
+              "curl -f -s -m 10 '${API_URL}/metrics' | grep -q 'http_requests_total'" \
+              "200"
+            
+            # Test 10: DICOM Service Test
+            {{- if .Values.dicomService.enabled }}
+            run_test "dicom-service" \
+              "curl -f -s -m 10 'https://dicom.{{.Values.global.domain}}/health' | jq -e '.status == \"healthy\"'" \
+              "200"
+            {{- else }}
+            echo "⏭️ Skipping DICOM service test (disabled)"
+            TOTAL_TESTS=$((TOTAL_TESTS + 1))
+            jq --arg name "dicom-service" --arg status "skipped" '.tests[$name] = {"status": $status}' "${TEST_RESULTS_DIR}/results.json" > "${TEST_RESULTS_DIR}/results.tmp" && mv "${TEST_RESULTS_DIR}/results.tmp" "${TEST_RESULTS_DIR}/results.json"
+            {{- end }}
+            
+            # Update summary
+            jq --arg total "$TOTAL_TESTS" --arg passed "$PASSED_TESTS" --arg failed "$FAILED_TESTS" \
+              '.summary.total = $total | .summary.passed = $passed | .summary.failed = $failed' \
+              "${TEST_RESULTS_DIR}/results.json" > "${TEST_RESULTS_DIR}/results.tmp" && mv "${TEST_RESULTS_DIR}/results.tmp" "${TEST_RESULTS_DIR}/results.json"
+            
+            # Generate test report
+            echo "📊 Test Results Summary:"
+            echo "  Total Tests: $TOTAL_TESTS"
+            echo "  Passed: $PASSED_TESTS"
+            echo "  Failed: $FAILED_TESTS"
+            echo "  Success Rate: $(( PASSED_TESTS * 100 / TOTAL_TESTS ))%"
+            
+            # Save detailed log
+            {
+              echo "=== Smoke Test Results ==="
+              echo "Environment: {{.Values.global.environment}}"
+              echo "Release Revision: {{.Release.Revision}}"
+              echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              echo ""
+              echo "Test Summary:"
+              echo "  Total Tests: $TOTAL_TESTS"
+              echo "  Passed: $PASSED_TESTS"
+              echo "  Failed: $FAILED_TESTS"
+              echo "  Success Rate: $(( PASSED_TESTS * 100 / TOTAL_TESTS ))%"
+              echo ""
+              echo "Detailed Results:"
+              jq -r '.tests | to_entries[] | "  \(.key): \(.value.status)"' "${TEST_RESULTS_DIR}/results.json"
+            } > "${TEST_LOG}"
+            
+            # Determine overall result
+            if [ $FAILED_TESTS -eq 0 ]; then
+              echo "✅ All smoke tests passed!"
+              echo "🎉 Deployment is healthy and ready for use!"
+              
+              # Upload results to S3 (if configured)
+              {{- if .Values.testing.s3.enabled }}
+              echo "☁️ Uploading test results to S3..."
+              aws s3 cp "${TEST_RESULTS_DIR}/results.json" "s3://{{.Values.testing.s3.bucket}}/{{.Values.testing.s3.prefix}}/{{.Values.global.environment}}/smoke-test-{{.Release.Revision}}.json"
+              aws s3 cp "${TEST_LOG}" "s3://{{.Values.testing.s3.bucket}}/{{.Values.testing.s3.prefix}}/{{.Values.global.environment}}/smoke-test-{{.Release.Revision}}.log"
+              echo "✅ Test results uploaded to S3"
+              {{- end }}
+              
+              exit 0
+            else
+              echo "❌ Some smoke tests failed!"
+              echo "🚨 Deployment may have issues - please investigate!"
+              
+              # Upload results to S3 (if configured)
+              {{- if .Values.testing.s3.enabled }}
+              echo "☁️ Uploading test results to S3..."
+              aws s3 cp "${TEST_RESULTS_DIR}/results.json" "s3://{{.Values.testing.s3.bucket}}/{{.Values.testing.s3.prefix}}/{{.Values.global.environment}}/smoke-test-{{.Release.Revision}}-failed.json"
+              aws s3 cp "${TEST_LOG}" "s3://{{.Values.testing.s3.bucket}}/{{.Values.testing.s3.prefix}}/{{.Values.global.environment}}/smoke-test-{{.Release.Revision}}-failed.log"
+              echo "✅ Test results uploaded to S3"
+              {{- end }}
+              
+              exit 1
+            fi
+        env:
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: aws-region
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: aws-access-key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: aws-secret-key
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: test-results
+          mountPath: /test-results
+          readOnly: false
+        - name: tmp-storage
+          mountPath: /tmp
+          readOnly: false
+        livenessProbe:
+          exec:
+            command:
+              - sh
+              - -c
+              - "test -f /test-results/results.json"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+              - sh
+              - -c
+              - "test -w /test-results"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: test-results
+        persistentVolumeClaim:
+          claimName: vitalstream-test-results-pvc
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 1Gi
+      # Node selector for testing jobs
+      nodeSelector:
+        node-type: testing
+        testing-capability: "true"
+      tolerations:
+      - key: "testing"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      # Priority class for testing jobs
+      priorityClassName: testing-priority
+      # Affinity to run on testing-capable nodes
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: testing-capability
+                operator: In
+                values:
+                - "true"
+      # Termination grace period
+      terminationGracePeriodSeconds: 300
+      # DNS configuration
+      dnsPolicy: ClusterFirst
+      # Host aliases (if needed)
+      hostAliases: []
+  # TTL for the job
+  ttlSecondsAfterFinished: 86400  # 24 hours

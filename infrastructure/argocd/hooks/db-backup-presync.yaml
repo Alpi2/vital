@@ -1,0 +1,285 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-backup-presync-{{.Values.global.environment}}-{{.Release.Revision}}
+  namespace: {{.Release.Namespace}}
+  labels:
+    app.kubernetes.io/name: db-backup-presync
+    app.kubernetes.io/component: hook
+    app.kubernetes.io/part-of: vitalstream
+    environment: {{.Values.global.environment}}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"  # Run before everything else
+    argocd.argoproj.io/hook-weight: "-10"
+spec:
+  backoffLimit: 3
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db-backup-presync
+        app.kubernetes.io/component: hook
+        app.kubernetes.io/part-of: vitalstream
+        environment: {{.Values.global.environment}}
+      annotations:
+        security.kubernetes.io/allow-privilege-escalation: "false"
+        security.kubernetes.io/read-only-root-filesystem: "true"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: vitalstream-backup
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: db-backup
+        image: postgres:15-alpine
+        command:
+          - sh
+          - -c
+          - |
+            set -euo pipefail
+            
+            echo "🗄️ Starting database backup for {{.Values.global.environment}} environment..."
+            echo "📅 Backup timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "🔄 Release revision: {{.Release.Revision}}"
+            
+            # Backup configuration
+            BACKUP_DIR="/backup"
+            BACKUP_FILE="vitalstream-{{.Values.global.environment}}-$(date +%Y%m%d-%H%M%S).sql"
+            BACKUP_PATH="${BACKUP_DIR}/${BACKUP_FILE}"
+            COMPRESSED_BACKUP="${BACKUP_PATH}.gz"
+            
+            # Create backup directory
+            mkdir -p "${BACKUP_DIR}"
+            
+            # Extract database connection details
+            DB_HOST="${DATABASE_HOST:-postgresql}"
+            DB_PORT="${DATABASE_PORT:-5432}"
+            DB_NAME="${DATABASE_NAME:-vitalstream_{{.Values.global.environment}}}"
+            DB_USER="${DATABASE_USER:-postgres}"
+            
+            echo "📊 Database: ${DB_HOST}:${DB_PORT}/${DB_NAME}"
+            echo "👤 User: ${DB_USER}"
+            
+            # Wait for database to be ready
+            echo "⏳ Checking database connectivity..."
+            until pg_isready -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}"; do
+              echo "🔄 Database not ready, waiting 5 seconds..."
+              sleep 5
+            done
+            echo "✅ Database is ready!"
+            
+            # Create backup
+            echo "🗄️ Creating database backup..."
+            PGPASSWORD="${DATABASE_PASSWORD}" pg_dump \
+              --host="${DB_HOST}" \
+              --port="${DB_PORT}" \
+              --username="${DB_USER}" \
+              --dbname="${DB_NAME}" \
+              --verbose \
+              --no-password \
+              --format=custom \
+              --compress=9 \
+              --lock-wait-timeout=30000 \
+              --jobs=4 \
+              --file="${BACKUP_PATH}" \
+              2>&1 | tee "${BACKUP_PATH}.log"
+            
+            # Verify backup was created
+            if [ -f "${BACKUP_PATH}" ]; then
+              BACKUP_SIZE=$(du -h "${BACKUP_PATH}" | cut -f1)
+              echo "✅ Backup created successfully!"
+              echo "📁 Backup file: ${BACKUP_FILE}"
+              echo "📏 Backup size: ${BACKUP_SIZE}"
+              
+              # Additional compression (if needed)
+              echo "🗜️ Compressing backup..."
+              gzip "${BACKUP_PATH}"
+              COMPRESSED_SIZE=$(du -h "${COMPRESSED_BACKUP}" | cut -f1)
+              echo "✅ Backup compressed successfully!"
+              echo "📏 Compressed size: ${COMPRESSED_SIZE}"
+              
+              # Create backup metadata
+              cat > "${BACKUP_DIR}/${BACKUP_FILE}.metadata.json" << EOF
+            {
+              "backup_file": "${BACKUP_FILE}.gz",
+              "environment": "{{.Values.global.environment}}",
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "release_revision": "{{.Release.Revision}}",
+              "database_host": "${DB_HOST}",
+              "database_port": "${DB_PORT}",
+              "database_name": "${DB_NAME}",
+              "backup_size_uncompressed": "${BACKUP_SIZE}",
+              "backup_size_compressed": "${COMPRESSED_SIZE}",
+              "checksum": "$(sha256sum "${COMPRESSED_BACKUP}" | cut -d' ' -f1)"
+            }
+            EOF
+              
+              # Upload to S3 (if configured)
+              {{- if .Values.backup.s3.enabled }}
+              echo "☁️ Uploading backup to S3..."
+              S3_BUCKET="{{.Values.backup.s3.bucket}}"
+              S3_PREFIX="{{.Values.backup.s3.prefix}}/{{.Values.global.environment}}"
+              S3_KEY="${S3_PREFIX}/${BACKUP_FILE}.gz"
+              
+              # Upload backup file
+              aws s3 cp "${COMPRESSED_BACKUP}" "s3://${S3_BUCKET}/${S3_KEY}" \
+                --storage-class {{.Values.backup.s3.storageClass | default "STANDARD_IA"}} \
+                --metadata "environment={{.Values.global.environment}},release-revision={{.Release.Revision}}"
+              
+              # Upload metadata
+              aws s3 cp "${BACKUP_DIR}/${BACKUP_FILE}.metadata.json" "s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_FILE}.metadata.json"
+              
+              echo "✅ Backup uploaded to S3: s3://${S3_BUCKET}/${S3_KEY}"
+              {{- end }}
+              
+              # Create latest symlink
+              cd "${BACKUP_DIR}"
+              ln -sf "${BACKUP_FILE}.gz" "vitalstream-{{.Values.global.environment}}-latest.sql.gz"
+              
+              # Cleanup old backups (keep last 7 days)
+              echo "🧹 Cleaning up old backups..."
+              find "${BACKUP_DIR}" -name "vitalstream-{{.Values.global.environment}}-*.sql.gz" -mtime +7 -delete
+              find "${BACKUP_DIR}" -name "vitalstream-{{.Values.global.environment}}-*.metadata.json" -mtime +7 -delete
+              
+              echo "✅ Backup process completed successfully!"
+              echo "📊 Backup summary:"
+              echo "  - Environment: {{.Values.global.environment}}"
+              echo "  - Release: {{.Release.Revision}}"
+              echo "  - File: ${BACKUP_FILE}.gz"
+              echo "  - Size: ${COMPRESSED_SIZE}"
+              echo "  - Checksum: $(sha256sum "${COMPRESSED_BACKUP}" | cut -d' ' -f1)"
+              {{- if .Values.backup.s3.enabled }}
+              echo "  - S3 Location: s3://${S3_BUCKET}/${S3_KEY}"
+              {{- end }}
+              
+            else
+              echo "❌ Backup failed!"
+              echo "📁 Backup file not found: ${BACKUP_PATH}"
+              exit 1
+            fi
+        env:
+        - name: DATABASE_HOST
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: database-host
+        - name: DATABASE_PORT
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: database-port
+        - name: DATABASE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: database-name
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: database-user
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: database-password
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: aws-region
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: aws-access-key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vitalstream-secrets
+              key: aws-secret-key
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: backup-storage
+          mountPath: /backup
+          readOnly: false
+        - name: tmp-storage
+          mountPath: /tmp
+          readOnly: false
+        livenessProbe:
+          exec:
+            command:
+              - sh
+              - -c
+              - "test -f /backup/vitalstream-{{.Values.global.environment}}-latest.sql.gz"
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+              - sh
+              - -c
+              - "test -w /backup"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: backup-storage
+        persistentVolumeClaim:
+          claimName: vitalstream-backup-pvc
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 1Gi
+      # Node selector for backup jobs
+      nodeSelector:
+        node-type: backup
+        backup-capability: "true"
+      tolerations:
+      - key: "backup"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      # Priority class for backup jobs
+      priorityClassName: backup-priority
+      # Affinity to run on backup-capable nodes
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: backup-capability
+                operator: In
+                values:
+                - "true"
+      # Termination grace period
+      terminationGracePeriodSeconds: 600
+      # DNS configuration
+      dnsPolicy: ClusterFirst
+      # Host aliases (if needed)
+      hostAliases: []
+  # TTL for the job
+  ttlSecondsAfterFinished: 86400  # 24 hours
