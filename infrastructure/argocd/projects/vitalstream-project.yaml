@@ -1,0 +1,496 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: vitalstream
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: vitalstream-project
+    app.kubernetes.io/component: project
+    app.kubernetes.io/part-of: argocd
+  annotations:
+    argocd.argoproj.io/sync-options: CreateNamespace=true
+    notifications.argoproj.io/subscribe.on-sync-succeeded: slack
+    notifications.argoproj.io/subscribe.on-sync-failed: slack
+    notifications.argoproj.io/subscribe.on-health-degraded: slack
+spec:
+  # Project description
+  description: "VitalStream Healthcare Monitoring Platform - Production GitOps Project"
+  
+  # Source repositories
+  sourceRepos:
+    # Main application repository
+    - repoURL: https://github.com/vitalstream/vitalstream.git
+      name: vitalstream
+      type: git
+      enableLfs: true
+      insecure: false
+      # For private repositories, configure credentials
+      # credsType: git
+      # sshPrivateKeySecret:
+      #   name: vitalstream-git-ssh-key
+      #   key: sshPrivateKey
+      # usernameSecret:
+      #   name: vitalstream-git-token
+      #   key: username
+      # passwordSecret:
+      #   name: vitalstream-git-token
+      #   key: password
+    
+    # Helm chart repositories
+    - repoURL: https://charts.bitnami.com/bitnami
+      name: bitnami
+      type: helm
+      enableLfs: false
+      insecure: false
+    
+    - repoURL: https://argoproj.github.io/argo-helm
+      name: argo-helm
+      type: helm
+      enableLfs: false
+      insecure: false
+    
+    # Additional chart repositories (if needed)
+    - repoURL: https://kubernetes.github.io/ingress-nginx
+      name: ingress-nginx
+      type: helm
+      enableLfs: false
+      insecure: false
+    
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      name: prometheus-community
+      type: helm
+      enableLfs: false
+      insecure: false
+  
+  # Destination clusters
+  destinations:
+    # Local cluster
+    - name: in-cluster
+      server: https://kubernetes.default.svc
+      namespace: vitalstream-*
+    
+    # Production cluster (if multi-cluster)
+    - name: production-cluster
+      server: https://prod-k8s.vitalstream.com
+      namespace: vitalstream-prod
+      # For external clusters, configure credentials
+      # credsType: serviceaccount
+      # serviceAccountName: argocd-manager
+      # serviceAccountNamespace: argocd
+    
+    # Staging cluster (if multi-cluster)
+    - name: staging-cluster
+      server: https://staging-k8s.vitalstream.com
+      namespace: vitalstream-staging
+      # credsType: serviceaccount
+      # serviceAccountName: argocd-manager
+      # serviceAccountNamespace: argocd
+    
+    # Development cluster (if multi-cluster)
+    - name: development-cluster
+      server: https://dev-k8s.vitalstream.com
+      namespace: vitalstream-dev
+      # credsType: serviceaccount
+      # serviceAccountName: argocd-manager
+      # serviceAccountNamespace: argocd
+  
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: ''
+      kind: ConfigMap
+    - group: ''
+      kind: Secret
+    - group: ''
+      kind: Service
+    - group: ''
+      kind: ServiceAccount
+    - group: ''
+      kind: Role
+    - group: ''
+      kind: RoleBinding
+    - group: ''
+      kind: ClusterRole
+    - group: ''
+      kind: ClusterRoleBinding
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: apps
+      kind: DaemonSet
+    - group: apps
+      kind: ReplicaSet
+    - group: batch
+      kind: Job
+    - group: batch
+      kind: CronJob
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: policy
+      kind: PodSecurityPolicy
+    - group: storage.k8s.io
+      kind: PersistentVolumeClaim
+    - group: storage.k8s.io
+      kind: StorageClass
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+    - group: monitoring.coreos.com
+      kind: PrometheusRule
+    - group: monitoring.coreos.com
+      kind: Prometheus
+    - group: argoproj.io
+      kind: Application
+    - group: argoproj.io
+      kind: ApplicationSet
+    - group: argoproj.io
+      kind: ArgoCD
+    - group: cert-manager.io
+      kind: Certificate
+    - group: cert-manager.io
+      kind: Issuer
+    - group: cert-manager.io
+      kind: ClusterIssuer
+  
+  # Namespace resource blacklist (restrictions)
+  namespaceResourceBlacklist:
+    - group: ''
+      kind: ResourceQuota
+    - group: ''
+      kind: LimitRange
+    - group: ''
+      kind: NetworkPolicy
+    - group: policy
+      kind: PodSecurityPolicy
+    - group: extensions.k8s.io
+      kind: Ingress
+    - group: networking.k8s.io
+      kind: IngressClass
+  
+  # Orphaned resource monitoring
+  orphanedResources:
+    warn: true
+    ignore:
+      - group: ''
+        kind: ConfigMap
+      - group: ''
+        kind: Secret
+      - group: ''
+        kind: ServiceAccount
+  
+  # Synchronization options
+  syncWindows:
+    # Production sync window (business hours)
+    - kind: allow
+      schedule: '0 9 * * 1-5'  # Monday to Friday, 9 AM UTC
+      duration: 8h
+      namespaces:
+        - vitalstream-prod
+        applications:
+          - vitalstream-prod
+    - kind: deny
+      schedule: '0 17 * * 1-5'  # Monday to Friday, 5 PM UTC
+      duration: 16h
+      namespaces:
+        - vitalstream-prod
+        applications:
+          - vitalstream-prod
+    
+    # Staging sync window (more permissive)
+    - kind: allow
+      schedule: '0 6 * * *'  # Every day at 6 AM UTC
+      duration: 20h
+      namespaces:
+        - vitalstream-staging
+        applications:
+          - vitalstream-staging
+    
+    # Development sync window (always allowed)
+    - kind: allow
+      schedule: '0 0 * * *'  # Every day at midnight UTC
+      duration: 24h
+      namespaces:
+        - vitalstream-dev
+        applications:
+          - vitalstream-dev
+  
+  # Role-based access control
+  roles:
+    # Admin role - Full access
+    - name: admin
+      description: "Full administrative access to all resources"
+      policies:
+        - p, role:admin, applications, *, vitalstream-*, allow
+        - p, role:admin, clusters, *, *, allow
+        - p, role:admin, repositories, *, *, allow
+        - p, role:admin, logs, *, *, allow
+        - p, role:admin, exec, *, *, allow
+      groups:
+        - vitalstream-admins
+        - sso:vitalstream:admins
+        - github:vitalstream:admins
+    
+    # Developer role - Deploy to dev/staging, read prod
+    - name: developer
+      description: "Can deploy to development and staging, read-only access to production"
+      policies:
+        - p, role:developer, applications, *, vitalstream-dev/*, allow
+        - p, role:developer, applications, *, vitalstream-staging/*, allow
+        - p, role:developer, applications, get, vitalstream-prod/*, allow
+        - p, role:developer, applications, sync, vitalstream-dev/*, allow
+        - p, role:developer, applications, sync, vitalstream-staging/*, allow
+        - p, role:developer, applications, override, vitalstream-dev/*, allow
+        - p, role:developer, applications, override, vitalstream-staging/*, allow
+        - p, role:developer, clusters, get, *, allow
+        - p, role:developer, repositories, *, *, allow
+        - p, role:developer, logs, get, *, allow
+      groups:
+        - vitalstream-developers
+        - sso:vitalstream:developers
+        - github:vitalstream:developers
+    
+    # Ops role - Manage all environments
+    - name: ops
+      description: "Operations team - can manage all environments including production"
+      policies:
+        - p, role:ops, applications, *, vitalstream-*, allow
+        - p, role:ops, applications, action, vitalstream-*, allow
+        - p, role:ops, applications, sync, vitalstream-*, allow
+        - p, role:ops, applications, override, vitalstream-*, allow
+        - p, role:ops, clusters, *, *, allow
+        - p, role:ops, repositories, *, *, allow
+        - p, role:ops, logs, *, *, allow
+        - p, role:ops, exec, *, *, allow
+      groups:
+        - vitalstream-ops
+        - sso:vitalstream:ops
+        - github:vitalstream:ops
+    
+    # Viewer role - Read-only access
+    - name: viewer
+      description: "Read-only access to all environments"
+      policies:
+        - p, role:viewer, applications, get, vitalstream-*, allow
+        - p, role:viewer, applications, sync, vitalstream-*, allow
+        - p, role:viewer, clusters, get, *, allow
+        - p, role:viewer, repositories, get, *, allow
+        - p, role:viewer, logs, get, *, allow
+      groups:
+        - vitalstream-viewers
+        - sso:vitalstream:viewers
+        - github:vitalstream:viewers
+    
+    # CI/CD role - Automated deployments
+    - name: ci-cd
+      description: "CI/CD service account for automated deployments"
+      policies:
+        - p, role:ci-cd, applications, *, vitalstream-dev/*, allow
+        - p, role:ci-cd, applications, *, vitalstream-staging/*, allow
+        - p, role:ci-cd, applications, sync, vitalstream-dev/*, allow
+        - p, role:ci-cd, applications, sync, vitalstream-staging/*, allow
+        - p, role:ci-cd, applications, override, vitalstream-dev/*, allow
+        - p, role:ci-cd, applications, override, vitalstream-staging/*, allow
+        - p, role:ci-cd, repositories, get, *, allow
+      groups:
+        - vitalstream-ci-cd
+        - github-actions:vitalstream
+    
+    # Auditor role - Audit and compliance
+    - name: auditor
+      description: "Auditor role for compliance and audit logging"
+      policies:
+        - p, role:auditor, applications, get, vitalstream-*, allow
+        - p, role:auditor, applications, sync, vitalstream-*, allow
+        - p, role:auditor, logs, get, *, allow
+        - p, role:auditor, clusters, get, *, allow
+      groups:
+        - vitalstream-auditors
+        - sso:vitalstream:auditors
+        - compliance:vitalstream
+  
+  # Default role for unauthenticated users
+  signatureKey: "MY-SIGNATURE-KEY"
+  
+  # Metadata
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-options: CreateNamespace=true
+      notifications.argoproj.io/subscribe.on-sync-succeeded: slack
+      notifications.argoproj.io/subscribe.on-sync-failed: slack
+      notifications.argoproj.io/subscribe.on-health-degraded: slack
+      project-owner: "VitalStream DevOps Team"
+      project-contact: "devops@vitalstream.com"
+      project-documentation: "https://docs.vitalstream.com/gitops"
+      project-slack: "#vitalstream-gitops"
+    labels:
+      project-type: "healthcare-platform"
+      environment: "production"
+      managed-by: "argocd"
+      team: "platform"
+  
+  # Namespace restrictions
+  namespaceResourceBlacklist:
+    - group: ''
+      kind: ResourceQuota
+    - group: ''
+      kind: LimitRange
+    - group: ''
+      kind: NetworkPolicy
+    - group: policy
+      kind: PodSecurityPolicy
+    - group: extensions.k8s.io
+      kind: Ingress
+    - group: networking.k8s.io
+      kind: IngressClass
+  
+  # Source namespace restrictions
+  sourceNamespaces:
+    - argocd
+    - vitalstream-*
+  
+  # Destination namespace restrictions
+  destinations:
+    - namespace: vitalstream-*
+      server: https://kubernetes.default.svc
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+  
+  # Application sync options
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Application health assessment
+  health:
+    status: Healthy
+    customHealthChecks:
+      - name: application-health
+        check:
+          http:
+            url: https://vitalstream.com/health
+            expectedStatus: 200
+            timeoutSeconds: 30
+      - name: api-health
+        check:
+          http:
+            url: https://api.vitalstream.com/health
+            expectedStatus: 200
+            timeoutSeconds: 30
+  
+  # Application ignore differences
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Ignore HPA-managed replicas
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/replicas  # Ignore HPA-managed replicas
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /data/ca.crt  # Ignore certificate changes
+    - group: ""
+      kind: ConfigMap
+      jsonPointers:
+        - /data/kube-root-ca.crt  # Ignore CA bundle changes
+  
+  # Application sync waves
+  syncWaves:
+    - name: infrastructure
+      resources:
+        - group: ""
+          kind: Namespace
+        - group: ""
+          kind: ConfigMap
+        - group: ""
+          kind: Secret
+        - group: rbac.authorization.k8s.io
+          kind: Role
+        - group: rbac.authorization.k8s.io
+          kind: RoleBinding
+    - name: storage
+      resources:
+        - group: ""
+          kind: PersistentVolumeClaim
+        - group: apps
+          kind: StatefulSet
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+        - group: apps
+          kind: StatefulSet
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+    - name: backend-services
+      resources:
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: alarmEngine
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: websocketService
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: mlInference
+    - name: frontend-services
+      resources:
+        - group: apps
+          kind: Deployment
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+    - name: ingress
+      resources:
+        - group: networking.k8s.io
+          kind: Ingress
+    - name: monitoring
+      resources:
+        - group: monitoring.coreos.com
+          kind: ServiceMonitor
+        - group: ""
+          kind: Service
+          selector:
+            matchLabels:
+              app.kubernetes.io/component: monitoring

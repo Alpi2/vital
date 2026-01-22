@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/part-of: argocd
+data:
+  policy.csv: |
+    # VitalStream ArgoCD RBAC Policy
+    # This policy defines role-based access control for ArgoCD
+    
+    # Admin role - Full access to all resources
+    p, role:admin, applications, *, */*, allow
+    p, role:admin, clusters, *, *, allow
+    p, role:admin, repositories, *, *, allow
+    p, role:admin, logs, *, *, allow
+    p, role:admin, exec, *, *, allow
+    
+    # Developer role - Can deploy to dev/staging, read-only access to prod
+    p, role:developer, applications, *, vitalstream-dev/*, allow
+    p, role:developer, applications, *, vitalstream-staging/*, allow
+    p, role:developer, applications, get, vitalstream-prod/*, allow
+    p, role:developer, applications, sync, vitalstream-dev/*, allow
+    p, role:developer, applications, sync, vitalstream-staging/*, allow
+    p, role:developer, applications, override, vitalstream-dev/*, allow
+    p, role:developer, applications, override, vitalstream-staging/*, allow
+    p, role:developer, clusters, get, *, allow
+    p, role:developer, repositories, *, *, allow
+    p, role:developer, logs, get, *, allow
+    
+    # Ops role - Can manage all environments, including production
+    p, role:ops, applications, *, vitalstream-*, allow
+    p, role:ops, applications, action, vitalstream-*, allow
+    p, role:ops, clusters, *, *, allow
+    p, role:ops, repositories, *, *, allow
+    p, role:ops, logs, *, *, allow
+    p, role:ops, exec, *, *, allow
+    
+    # Viewer role - Read-only access to all environments
+    p, role:viewer, applications, get, vitalstream-*, allow
+    p, role:viewer, applications, sync, vitalstream-*, allow
+    p, role:viewer, clusters, get, *, allow
+    p, role:viewer, repositories, get, *, allow
+    p, role:viewer, logs, get, *, allow
+    
+    # Service account role - For automated processes
+    p, role:serviceaccount, applications, *, vitalstream-*, allow
+    p, role:serviceaccount, applications, sync, vitalstream-*, allow
+    p, role:serviceaccount, applications, override, vitalstream-*, allow
+    p, role:serviceaccount, clusters, get, *, allow
+    p, role:serviceaccount, repositories, get, *, allow
+    
+    # Group mappings
+    g, vitalstream-admins, role:admin
+    g, vitalstream-developers, role:developer
+    g, vitalstream-ops, role:ops
+    g, vitalstream-viewers, role:viewer
+    g, vitalstream-serviceaccounts, role:serviceaccount
+    
+    # External group mappings (for SSO integration)
+    g, sso:vitalstream:admins, role:admin
+    g, sso:vitalstream:developers, role:developer
+    g, sso:vitalstream:ops, role:ops
+    g, sso:vitalstream:viewers, role:viewer
+    
+    # Default policy
+    policy.default: role:viewer
+    
+    # Project-specific policies
+    p, role:project-admin, applications, *, vitalstream-*, allow
+    p, role:project-admin, projects, *, vitalstream-*, allow
+    p, role:project-admin, clusters, *, *, allow
+    g, vitalstream-project-admins, role:project-admin
+    
+    # Environment-specific restrictions
+    p, role:prod-operator, applications, sync, vitalstream-prod/*, allow
+    p, role:prod-operator, applications, action, vitalstream-prod/*, allow
+    p, role:prod-operator, applications, get, vitalstream-prod/*, allow
+    g, vitalstream-prod-operators, role:prod-operator
+    
+    # CI/CD role - For automated deployment pipelines
+    p, role:ci-cd, applications, *, vitalstream-dev/*, allow
+    p, role:ci-cd, applications, *, vitalstream-staging/*, allow
+    p, role:ci-cd, applications, sync, vitalstream-dev/*, allow
+    p, role:ci-cd, applications, sync, vitalstream-staging/*, allow
+    p, role:ci-cd, applications, override, vitalstream-dev/*, allow
+    p, role:ci-cd, applications, override, vitalstream-staging/*, allow
+    p, role:ci-cd, repositories, get, *, allow
+    g, vitalstream-ci-cd, role:ci-cd
+    
+    # Audit role - Can view audit logs and compliance reports
+    p, role:auditor, applications, get, vitalstream-*, allow
+    p, role:auditor, applications, sync, vitalstream-*, allow
+    p, role:auditor, logs, get, *, allow
+    p, role:auditor, clusters, get, *, allow
+    g, vitalstream-auditors, role:auditor
+    
+    # Security role - Can manage security policies and secrets
+    p, role:security, applications, get, vitalstream-*, allow
+    p, role:security, applications, sync, vitalstream-*, allow
+    p, role:security, secrets, *, vitalstream-*, allow
+    p, role:security, clusters, get, *, allow
+    g, vitalstream-security, role:security
+  
+  policy.default: role:viewer
+  
+  # Scopes for fine-grained access control
+  scopes: '[groups]'

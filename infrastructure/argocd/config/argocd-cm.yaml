@@ -1,0 +1,508 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: argocd
+data:
+  # ArgoCD Server Configuration
+  server.insecure: "false"
+  server.baseurl: "https://argocd.vitalstream.com"
+  server.grpc.web: "true"
+  server.grpc.web.network: "public"
+  
+  # Repository Configuration
+  repositories: |
+    - type: git
+      url: https://github.com/vitalstream/vitalstream.git
+      name: vitalstream
+      project: vitalstream
+      enableLfs: true
+      insecure: false
+      credsType: git
+      # For private repositories, use SSH or token-based auth
+      # sshPrivateKeySecret:
+      #   name: vitalstream-git-ssh-key
+      #   key: sshPrivateKey
+      # usernameSecret:
+      #   name: vitalstream-git-token
+      #   key: username
+      # passwordSecret:
+      #   name: vitalstream-git-token
+      #   key: password
+    
+    - type: helm
+      url: https://charts.bitnami.com/bitnami
+      name: bitnami
+      project: vitalstream
+      enableLfs: false
+      insecure: false
+    
+    - type: helm
+      url: https://argoproj.github.io/argo-helm
+      name: argo-helm
+      project: vitalstream
+      enableLfs: false
+      insecure: false
+  
+  # Application Configuration
+  application.instanceLabelKey: "argocd.argoproj.io/instance"
+  statusbadge.application.insighturl: "https://argocd.vitalstream.com/applications"
+  
+  # Dex Configuration for SSO
+  dex.config: |
+    connectors:
+      # GitHub OAuth2 Connector
+      - type: github
+        id: github
+        name: GitHub
+        config:
+          clientID: github-client-id
+          clientSecret: $github-client-secret
+          orgs:
+            - vitalstream
+          teams:
+            vitalstream-admins: admins
+            vitalstream-developers: developers
+            vitalstream-ops: ops
+            vitalstream-viewers: viewers
+          useLoginAsID: true
+          scopes:
+            - user:email
+            - read:org
+      
+      # OIDC Connector (for enterprise SSO)
+      - type: oidc
+        id: oidc
+        name: VitalStream SSO
+        config:
+          issuer: https://sso.vitalstream.com
+          clientID: argocd
+          clientSecret: $oidc.clientSecret
+          requestedScopes:
+            - openid
+            - profile
+            - email
+            - groups
+          rootCA: /app/config/tls/ca.crt
+          # Optional: Custom claims mapping
+          # requestedIDTokenClaims:
+          #   - email
+          #   - groups
+          #   - name
+          #   - preferred_username
+  
+  # Resource Tracking
+  resource.customizations: |
+    - group: argoproj.io
+      version: v1alpha1
+      kind: Application
+      health.lua: |
+        hs = {}
+        hs.status = "Progressing"
+        hs.message = "Application is being processed"
+        
+        if obj.status ~= nil then
+          if obj.status.operationState ~= nil and obj.status.operationState.phase == "Succeeded" then
+            hs.status = "Healthy"
+            hs.message = "Application is healthy"
+          elseif obj.status.operationState ~= nil and obj.status.operationState.phase == "Failed" then
+            hs.status = "Degraded"
+            hs.message = "Application failed to sync"
+          elseif obj.status.operationState ~= nil and obj.status.operationState.phase == "Error" then
+            hs.status = "Degraded"
+            hs.message = "Application sync error"
+          elseif obj.status.health ~= nil then
+            hs.status = obj.status.health.status
+            hs.message = obj.status.health.message
+          end
+        end
+        
+        return hs
+  
+  # Resource Tracking
+  resource.exclusions: |
+    - apiGroups:
+      - "tekton.dev"
+      kinds:
+      - PipelineRun
+      - TaskRun
+    - apiGroups:
+      - "batch"
+      kinds:
+      - Job
+      clusters:
+      - "https://kubernetes.default.svc"
+  
+  # Resource Tracking
+  resource.inclusions: |
+    - apiGroups:
+      - "*"
+      kinds:
+      - "*"
+  
+  # Application Management
+  application.syncWave: "0"
+  application.settlingTimeout: "5m"
+  application.revisionHistoryLimit: "10"
+  
+  # Repository Server Configuration
+  reposerver.parallelism.limit: "10"
+  reposerver.mountsatoken: "true"
+  reposerver.rateLimit: "100"
+  
+  # Controller Configuration
+  controller.operation.processors: "10"
+  controller.status.processors: "20"
+  controller.self.heal.timeout: "5m"
+  controller.sync.retry.limit: "5"
+  controller.sync.retry.backoff.duration: "5s"
+  controller.sync.retry.backoff.factor: "2"
+  controller.sync.retry.backoff.maxDuration: "3m"
+  
+  # Timeout Configuration
+  timeout.reconciliation: "180s"
+  timeout.hard.reconciliation: "600s"
+  timeout.application.sync: "300s"
+  timeout.hook: "600s"
+  
+  # Metrics Configuration
+  metrics.enabled: "true"
+  metrics.applicationLabels.enabled: "true"
+  metrics.server.expose: "true"
+  metrics.server.path: "/metrics"
+  metrics.server.port: "8083"
+  
+  # Audit Logging
+  audit.enabled: "true"
+  audit.appname: "argocd"
+  audit.format: "json"
+  audit.loglevel: "info"
+  audit.filepath: "/var/log/argocd/audit.log"
+  audit.maxage: "30"
+  audit.maxsize: "100"
+  audit.maxbackups: "3"
+  
+  # Server Configuration
+  server.staticassets: "/shared/app"
+  server.dex.config: "/etc/argocd/dex/config.yaml"
+  server.tls.certificatepath: "/app/config/tls/tls.crt"
+  server.tls.privatekeypath: "/app/config/tls/tls.key"
+  server.tls.minversion: "VersionTLS12"
+  
+  # UI Configuration
+  ui.bannercontent: "VitalStream GitOps Platform - Production Environment"
+  ui.bannerurl: "https://docs.vitalstream.com/gitops"
+  ui.hidehelmversion: "false"
+  ui.linkurl: "https://vitalstream.com"
+  
+  # Notification Configuration
+  notifications.enabled: "true"
+  notifications.argocd.namespace: "argocd"
+  
+  # Secret Management
+  secret.management.enabled: "true"
+  secret.management.type: "vault"
+  secret.management.vault.address: "https://vault.vitalstream.com"
+  secret.management.vault.auth.method: "kubernetes"
+  secret.management.vault.auth.mountPath: "kubernetes"
+  secret.management.vault.auth.role: "argocd"
+  secret.management.vault.server: "https://vault.vitalstream.com"
+  
+  # Configuration Management
+  configManagementPlugins: |
+    - name: argocd-vault-plugin
+      init:
+        command: ["/bin/sh", "-c"]
+        args: ["apk add --no-cache curl && curl -L -o /bin/argocd-vault-plugin https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v1.13.0/argocd-vault-plugin-linux-amd64 && chmod +x /bin/argocd-vault-plugin"]
+      generate:
+        command: ["/bin/argocd-vault-plugin"]
+  
+  # Git Configuration
+  git.config: |
+    [user]
+      name = vitalstream-bot
+      email = bot@vitalstream.com
+    [core]
+      autocrlf = false
+    [pull]
+      rebase = true
+  
+  # Helm Configuration
+  helm.bin: "/usr/local/bin/helm"
+  helm.home: "/home/argocd/.helm"
+  
+  # Kustomize Configuration
+  kustomize.buildOptions: "--enable-alpha-plugins"
+  kustomize.path.prefix: "/custom-plugins"
+  
+  # Server TLS Configuration
+  server.tls.cacerts: "/app/config/tls/ca.crt"
+  server.tls.certificates: "/app/config/tls/tls.crt"
+  server.tls.privatekeys: "/app/config/tls/tls.key"
+  
+  # OIDC Configuration
+  oidc.config: |
+    name: VitalStream
+    issuer: https://sso.vitalstream.com
+    clientID: argocd
+    clientSecret: $oidc.clientSecret
+    requestedScopes: ["openid", "profile", "email", "groups"]
+    requestedIDTokenClaims: ["email", "groups", "name", "preferred_username"]
+    rootCA: /app/config/tls/ca.crt
+  
+  # Repository Server TLS
+  reposerver.tls.cacerts: "/app/config/tls/ca.crt"
+  reposerver.tls.certificates: "/app/config/tls/tls.crt"
+  reposerver.tls.privatekeys: "/app/config/tls/tls.key"
+  
+  # Controller TLS
+  controller.tls.cacerts: "/app/config/tls/ca.crt"
+  controller.tls.certificates: "/app/config/tls/tls.crt"
+  controller.tls.privatekeys: "/app/config/tls/tls.key"
+  
+  # Application Controller
+  application.instanceLabelKey: "argocd.argoproj.io/instance"
+  application.labelkey: "app.kubernetes.io/name"
+  
+  # Resource Tracking
+  tracking.method: "label"
+  tracking.labelkey: "argocd.argoproj.io/tracking-id"
+  
+  # Project Configuration
+  project.default.project: "vitalstream"
+  
+  # Server Configuration
+  server.grpc.maxMessageSize: "104857600"  # 100MB
+  server.grpc.maxRecvMsgSize: "104857600"  # 100MB
+  
+  # UI Configuration
+  ui.image: "argoproj/argocd-ui:v2.9.5"
+  ui.imagepullpolicy: "IfNotPresent"
+  
+  # Redis Configuration
+  redis.port: "6379"
+  redis.host: "argocd-redis"
+  redis.password: ""
+  redis.db: "0"
+  redis.poolsize: "10"
+  redis.timeout: "5m"
+  
+  # Server Configuration
+  server.port: "8080"
+  server.basehref: "/"
+  server.rootpath: "/"
+  
+  # Metrics Configuration
+  metrics.applicationLabels.enabled: "true"
+  metrics.applicationLabels.keys: "app.kubernetes.io/name,app.kubernetes.io/component,app.kubernetes.io/part-of"
+  
+  # Server Configuration
+  server.enable.gzip: "true"
+  server.enable.swagger: "true"
+  
+  # Repository Server Configuration
+  reposerver.enable.auth: "true"
+  reposerver.enable.oidc: "true"
+  
+  # Controller Configuration
+  controller.parallelism: "10"
+  controller.sharding.enabled: "false"
+  
+  # Application Configuration
+  application.resourceTrackingMethod: "label"
+  application.namespaces: "vitalstream-*,argocd"
+  
+  # Server Configuration
+  server.disable.auth: "false"
+  server.enable.rbac: "true"
+  
+  # UI Configuration
+  ui.hideperfdata: "false"
+  ui.readonly: "false"
+  
+  # Notification Configuration
+  notifications.triggers:
+    - on-sync-succeeded
+    - on-sync-failed
+    - on-sync-status-unknown
+    - on-sync-running
+    - on-health-degraded
+    - on-health-missing
+    - on-deployed
+    - on-rollback
+  
+  # Secret Management
+  secret.management.enabled: "true"
+  secret.management.type: "vault"
+  secret.management.vault.address: "https://vault.vitalstream.com"
+  secret.management.vault.auth.method: "kubernetes"
+  secret.management.vault.auth.mountPath: "kubernetes"
+  secret.management.vault.auth.role: "argocd"
+  secret.management.vault.server: "https://vault.vitalstream.com"
+  secret.management.vault.connection.timeout: "30s"
+  secret.management.vault.maxretries: "3"
+  secret.management.vault.retryintervalseconds: "5"
+  
+  # Git Configuration
+  git.shallow.clone: "true"
+  git.fsck: "false"
+  git.gc: "auto"
+  
+  # Helm Configuration
+  helm.bin: "/usr/local/bin/helm"
+  helm.home: "/home/argocd/.helm"
+  helm.cache.enabled: "true"
+  helm.cache.path: "/tmp/helm/cache"
+  
+  # Kustomize Configuration
+  kustomize.buildOptions: "--enable-alpha-plugins"
+  kustomize.path.prefix: "/custom-plugins"
+  kustomize.version: "v5.0.0"
+  
+  # Server Configuration
+  server.tls.minversion: "VersionTLS12"
+  server.tls.ciphersuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"
+  
+  # OIDC Configuration
+  oidc.tls.ca: "/app/config/tls/ca.crt"
+  oidc.tls.insecure.skip.verify: "false"
+  
+  # Repository Server Configuration
+  reposerver.tls.minversion: "VersionTLS12"
+  reposerver.tls.ciphersuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"
+  
+  # Controller Configuration
+  controller.tls.minversion: "VersionTLS12"
+  controller.tls.ciphersuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"
+  
+  # Server Configuration
+  server.grpc.maxConcurrentStreams: "1000"
+  server.grpc.maxReceiveMessageSize: "104857600"  # 100MB
+  server.grpc.maxSendMessageSize: "104857600"  # 100MB
+  
+  # UI Configuration
+  ui.imagepullpolicy: "IfNotPresent"
+  ui.imagepullsecrets: ""
+  
+  # Metrics Configuration
+  metrics.enabled: "true"
+  metrics.port: "8083"
+  metrics.path: "/metrics"
+  metrics.prometheus.enabled: "true"
+  metrics.prometheus.port: "8083"
+  metrics.prometheus.path: "/metrics"
+  
+  # Server Configuration
+  server.enable.proxy: "true"
+  server.proxy.accept: "application/json,application/yaml,text/plain"
+  server.proxy.accept.encoding: "gzip"
+  
+  # Repository Server Configuration
+  reposerver.enable.git: "true"
+  reposerver.enable.helm: "true"
+  reposerver.enable.kustomize: "true"
+  reposerver.enable.ksonnet: "false"
+  
+  # Controller Configuration
+  controller.enable.git: "true"
+  controller.enable.helm: "true"
+  controller.enable.kustomize: "true"
+  controller.enable.ksonnet: "false"
+  
+  # Server Configuration
+  server.enable.swagger: "true"
+  server.enable.swagger.v2: "true"
+  
+  # UI Configuration
+  ui.hideperfdata: "false"
+  ui.readonly: "false"
+  ui.bannercontent: "VitalStream GitOps Platform"
+  ui.bannerurl: "https://docs.vitalstream.com/gitops"
+  ui.linkurl: "https://vitalstream.com"
+  
+  # Notification Configuration
+  notifications.enabled: "true"
+  notifications.argocd.namespace: "argocd"
+  notifications.argocd.service: "argocd-server"
+  
+  # Secret Management
+  secret.management.enabled: "true"
+  secret.management.type: "vault"
+  secret.management.vault.address: "https://vault.vitalstream.com"
+  secret.management.vault.auth.method: "kubernetes"
+  secret.management.vault.auth.mountPath: "kubernetes"
+  secret.management.vault.auth.role: "argocd"
+  secret.management.vault.server: "https://vault.vitalstream.com"
+  secret.management.vault.connection.timeout: "30s"
+  secret.management.vault.maxretries: "3"
+  secret.management.vault.retryintervalseconds: "5"
+  
+  # Git Configuration
+  git.shallow.clone: "true"
+  git.fsck: "false"
+  git.gc: "auto"
+  
+  # Helm Configuration
+  helm.bin: "/usr/local/bin/helm"
+  helm.home: "/home/argocd/.helm"
+  helm.cache.enabled: "true"
+  helm.cache.path: "/tmp/helm/cache"
+  
+  # Kustomize Configuration
+  kustomize.buildOptions: "--enable-alpha-plugins"
+  kustomize.path.prefix: "/custom-plugins"
+  kustomize.version: "v5.0.0"
+  
+  # Server Configuration
+  server.tls.minversion: "VersionTLS12"
+  server.tls.ciphersuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"
+  
+  # OIDC Configuration
+  oidc.tls.ca: "/app/config/tls/ca.crt"
+  oidc.tls.insecure.skip.verify: "false"
+  
+  # Repository Server Configuration
+  reposerver.tls.minversion: "VersionTLS12"
+  reposerver.tls.ciphersuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"
+  
+  # Controller Configuration
+  controller.tls.minversion: "VersionTLS12"
+  controller.tls.ciphersuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"
+  
+  # Server Configuration
+  server.grpc.maxConcurrentStreams: "1000"
+  server.grpc.maxReceiveMessageSize: "104857600"  # 100MB
+  server.grpc.maxSendMessageSize: "104857600"  # 100MB
+  
+  # UI Configuration
+  ui.imagepullpolicy: "IfNotPresent"
+  ui.imagepullsecrets: ""
+  
+  # Metrics Configuration
+  metrics.enabled: "true"
+  metrics.port: "8083"
+  metrics.path: "/metrics"
+  metrics.prometheus.enabled: "true"
+  metrics.prometheus.port: "8083"
+  metrics.prometheus.path: "/metrics"
+  
+  # Server Configuration
+  server.enable.proxy: "true"
+  server.proxy.accept: "application/json,application/yaml,text/plain"
+  server.proxy.accept.encoding: "gzip"
+  
+  # Repository Server Configuration
+  reposerver.enable.git: "true"
+  reposerver.enable.helm: "true"
+  reposerver.enable.kustomize: "true"
+  reposerver.enable.ksonnet: "false"
+  
+  # Controller Configuration
+  controller.enable.git: "true"
+  controller.enable.helm: "true"
+  controller.enable.kustomize: "true"
+  controller.enable.ksonnet: "false"
