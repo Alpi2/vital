@@ -1,0 +1,125 @@
+version: v1
+name: buf.build/vitalstream/protos
+deps:
+  - buf.build/googleapis/googleapis
+  - buf.build/grpc-ecosystem/grpc-gateway
+
+breaking:
+  use:
+    - FILE
+    - WIRE_JSON
+  except:
+    - PACKAGE_VERSION_SUFFIX
+    - FIELD_NO_SAME_NAME
+  ignore:
+    - "google/protobuf/any.proto"
+
+lint:
+  use:
+    - DEFAULT
+  except:
+    - PACKAGE_VERSION_SUFFIX
+    - FIELD_NOT_REQUIRED
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - SERVICE_SUFFIX
+  ignore_only:
+    - ENUM_VALUE_PREFIX
+    - ENUM_ZERO_VALUE_SUFFIX
+    - FIELD_LOWER_SNAKE_CASE
+    - MESSAGE_NAMES_UPPER_CAMEL_CASE
+    - PACKAGE_SAME_DIRECTORY
+    - PACKAGE_SAME_CSHARP_NAMESPACE
+    - PACKAGE_SAME_GO_PACKAGE
+    - PACKAGE_SAME_JAVA_PACKAGE
+    - PACKAGE_SAME_PHP_NAMESPACE
+    - PACKAGE_SAME_RUBY_PACKAGE
+
+# Plugin configurations for different languages
+plugins:
+  # Python gRPC
+  - plugin: buf.build/protocolbuffers/python
+    out: ../backend/app/generated/protos
+    opt:
+      - paths=source_relative
+  - plugin: buf.build/protocolbuffers/pyi
+    out: ../backend/app/generated/protos
+    opt:
+      - paths=source_relative
+
+  # Rust
+  - plugin: buf.build/protocolbuffers/rust
+    out: ../alarm-engine/src/generated
+    opt:
+      - compile_well_known_types
+  - plugin: buf.build/protocolbuffers/rust-grpc
+    out: ../alarm-engine/src/generated
+    opt:
+      - compile_well_known_types
+
+  # TypeScript
+  - plugin: buf.build/protocolbuffers/typescript
+    out: ../frontend/src/app/generated/protos
+    opt:
+      - long_type_string
+      - output_javascript
+      - output_json_methods
+      - output_services=grpc-js
+      - output_client_grpc=1
+      - output_server_grpc=1
+
+  # Go (for potential future use)
+  - plugin: buf.build/protocolbuffers/go
+    out: ../go/pkg/protos
+    opt:
+      - paths=source_relative
+  - plugin: buf.build/protocolbuffers/go-grpc
+    out: ../go/pkg/protos
+    opt:
+      - paths=source_relative
+
+  # Java (for HL7/DICOM services)
+  - plugin: buf.build/protocolbuffers/java
+    out: ../hl7-integration-service/src/main/java
+    opt:
+      - annotate_code
+  - plugin: buf.build/protocolbuffers/java-grpc
+    out: ../hl7-integration-service/src/main/java
+    opt:
+      - annotate_code
+
+  # C# (for potential .NET integration)
+  - plugin: buf.build/protocolbuffers/csharp
+    out: ../dotnet/Generated
+    opt:
+      - file_extension=.g.cs
+  - plugin: buf.build/protocolbuffers/csharp-grpc
+    out: ../dotnet/Generated
+    opt:
+      - file_extension=.Grpc.cs
+
+  # Documentation
+  - plugin: buf.build/protocolbuffers/doc
+    out: ../docs/protos
+    opt:
+      - format=markdown
+      - source_relative
+
+  # Validation
+  - plugin: buf.build/community/bufbuild-validate-go
+    out: ../backend/app/generated/protos
+    opt:
+      - paths=source_relative
+
+# Build configuration
+build:
+  excludes:
+    - "google/protobuf/*"
+  roots:
+    - .
+
+# Versioning configuration
+versioning:
+  mode: git
+  default_branch: main

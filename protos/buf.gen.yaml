@@ -1,0 +1,10 @@
+version: v1
+managed:
+  enabled: true
+plugins:
+  # Documentation generation
+  - plugin: buf.build/protocolbuffers/doc
+    out: ../docs/protos
+    opt:
+      format: markdown
+      source_relative: true
