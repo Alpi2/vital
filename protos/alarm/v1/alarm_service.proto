@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package alarm.v1;
+
+import "alarm/v1/alarm.proto";
+import "common/v1/common.proto";
+
+option go_package = "github.com/vitalstream/protos/alarm/v1;alarmv1";
+option java_package = "com.vitalstream.alarm.v1";
+option java_multiple_files = true;
+
+// Alarm Service gRPC definition
+service AlarmService {
+  // Create a new alarm
+  rpc CreateAlarm(CreateAlarmRequest) returns (CreateAlarmResponse);
+  
+  // Get alarms with filtering and pagination
+  rpc GetAlarms(GetAlarmsRequest) returns (GetAlarmsResponse);
+  
+  // Acknowledge an alarm
+  rpc AcknowledgeAlarm(AcknowledgeAlarmRequest) returns (AcknowledgeAlarmResponse);
+  
+  // Resolve an alarm
+  rpc ResolveAlarm(ResolveAlarmRequest) returns (ResolveAlarmResponse);
+  
+  // Silence an alarm temporarily
+  rpc SilenceAlarm(SilenceAlarmRequest) returns (SilenceAlarmResponse);
+  
+  // Escalate an alarm
+  rpc EscalateAlarm(EscalateAlarmRequest) returns (EscalateAlarmResponse);
+  
+  // Get alarm statistics
+  rpc GetStatistics(GetStatisticsRequest) returns (GetStatisticsResponse);
+  
+  // Batch operations on multiple alarms
+  rpc BatchAlarmOperations(BatchAlarmRequest) returns (BatchAlarmResponse);
+  
+  // Stream active alarms (server streaming)
+  rpc StreamAlarms(StreamAlarmsRequest) returns (stream Alarm);
+  
+  // Bidirectional alarm event stream
+  rpc AlarmChannel(stream AlarmEvent) returns (stream AlarmEvent);
+  
+  // Subscribe to alarm notifications
+  rpc SubscribeAlarms(SubscribeAlarmsRequest) returns (SubscribeAlarmsResponse);
+  
+  // Unsubscribe from alarm notifications
+  rpc UnsubscribeAlarms(UnsubscribeAlarmsRequest) returns (UnsubscribeAlarmsResponse);
+  
+  // Health check
+  rpc HealthCheck(common.v1.HealthCheckRequest) returns (common.v1.HealthCheckResponse);
+}

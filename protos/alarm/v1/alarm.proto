@@ -1,0 +1,314 @@
+syntax = "proto3";
+
+package alarm.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+import "common/v1/common.proto";
+import "common/v1/error.proto";
+import "common/v1/pagination.proto";
+
+option go_package = "github.com/vitalstream/protos/alarm/v1;alarmv1";
+option java_package = "com.vitalstream.alarm.v1";
+option java_multiple_files = true;
+
+// Alarm severity levels
+enum AlarmSeverity {
+  ALARM_SEVERITY_UNSPECIFIED = 0;
+  ALARM_SEVERITY_INFO = 1;
+  ALARM_SEVERITY_LOW = 2;
+  ALARM_SEVERITY_MEDIUM = 3;
+  ALARM_SEVERITY_HIGH = 4;
+  ALARM_SEVERITY_CRITICAL = 5;
+}
+
+// Alarm status
+enum AlarmStatus {
+  ALARM_STATUS_UNSPECIFIED = 0;
+  ALARM_STATUS_ACTIVE = 1;
+  ALARM_STATUS_ACKNOWLEDGED = 2;
+  ALARM_STATUS_RESOLVED = 3;
+  ALARM_STATUS_SILENCED = 4;
+  ALARM_STATUS_ESCALATED = 5;
+}
+
+// Alarm type
+enum AlarmType {
+  ALARM_TYPE_UNSPECIFIED = 0;
+  ALARM_TYPE_ARRHYTHMIA = 1;
+  ALARM_TYPE_TACHYCARDIA = 2;
+  ALARM_TYPE_BRADYCARDIA = 3;
+  ALARM_TYPE_AFIB = 4;
+  ALARM_TYPE_VFIB = 5;
+  ALARM_TYPE_PVC = 6;
+  ALARM_TYPE_ST_ELEVATION = 7;
+  ALARM_TYPE_ST_DEPRESSION = 8;
+  ALARM_TYPE_LEAD_OFF = 9;
+  ALARM_TYPE_SIGNAL_QUALITY = 10;
+  ALARM_TYPE_DEVICE_ERROR = 11;
+  ALARM_TYPE_BATTERY_LOW = 12;
+  ALARM_TYPE_DISCONNECTED = 13;
+  ALARM_TYPE_THRESHOLD_BREACH = 14;
+  ALARM_TYPE_SYSTEM_ERROR = 15;
+  // Reserved for future use (90-99)
+  ALARM_TYPE_CUSTOM = 99;
+}
+
+// Notification channel
+enum NotificationChannel {
+  NOTIFICATION_CHANNEL_UNSPECIFIED = 0;
+  NOTIFICATION_CHANNEL_EMAIL = 1;
+  NOTIFICATION_CHANNEL_SMS = 2;
+  NOTIFICATION_CHANNEL_PAGER = 3;
+  NOTIFICATION_CHANNEL_SLACK = 4;
+  NOTIFICATION_CHANNEL_WEBHOOK = 5;
+  NOTIFICATION_CHANNEL_MOBILE_PUSH = 6;
+  NOTIFICATION_CHANNEL_IN_APP = 7;
+}
+
+// Alarm message
+message Alarm {
+  string id = 1;
+  string patient_id = 2;
+  AlarmType type = 3;
+  AlarmSeverity severity = 4;
+  AlarmStatus status = 5;
+  string message = 6;
+  string description = 7;
+  map<string, string> metadata = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp acknowledged_at = 10;
+  google.protobuf.Timestamp resolved_at = 11;
+  string acknowledged_by = 12;
+  string resolved_by = 13;
+  int32 escalation_level = 14;
+  repeated NotificationChannel notification_channels = 15;
+  string source = 16;
+  string device_id = 17;
+  bool auto_resolve = 18;
+  int32 timeout_seconds = 19;
+  repeated string tags = 20;
+  google.protobuf.Any custom_data = 21;
+}
+
+// Create alarm request
+message CreateAlarmRequest {
+  string patient_id = 1;
+  AlarmType type = 2;
+  AlarmSeverity severity = 3;
+  string message = 4;
+  string description = 5;
+  map<string, string> metadata = 6;
+  string source = 7;
+  string device_id = 8;
+  repeated NotificationChannel notification_channels = 9;
+  bool auto_resolve = 10;
+  int32 timeout_seconds = 11;
+  repeated string tags = 12;
+  google.protobuf.Any custom_data = 13;
+}
+
+// Create alarm response
+message CreateAlarmResponse {
+  Alarm alarm = 1;
+  common.v1.Error error = 2;
+}
+
+// Get alarms request
+message GetAlarmsRequest {
+  string patient_id = 1;
+  repeated AlarmStatus status = 2;
+  repeated AlarmSeverity severity = 3;
+  repeated AlarmType type = 4;
+  string source = 5;
+  string device_id = 6;
+  google.protobuf.Timestamp start_time = 7;
+  google.protobuf.Timestamp end_time = 8;
+  common.v1.PaginationRequest pagination = 9;
+  string search_query = 10;
+  repeated string tags = 11;
+}
+
+// Get alarms response
+message GetAlarmsResponse {
+  repeated Alarm alarms = 1;
+  int32 total_count = 2;
+  common.v1.PaginationResponse pagination = 3;
+  common.v1.Error error = 4;
+}
+
+// Acknowledge alarm request
+message AcknowledgeAlarmRequest {
+  string alarm_id = 1;
+  string acknowledged_by = 2;
+  string notes = 3;
+  bool escalate = 4;
+}
+
+// Acknowledge alarm response
+message AcknowledgeAlarmResponse {
+  Alarm alarm = 1;
+  common.v1.Error error = 2;
+}
+
+// Resolve alarm request
+message ResolveAlarmRequest {
+  string alarm_id = 1;
+  string resolved_by = 2;
+  string resolution_notes = 3;
+  bool auto_resolved = 4;
+}
+
+// Resolve alarm response
+message ResolveAlarmResponse {
+  Alarm alarm = 1;
+  common.v1.Error error = 2;
+}
+
+// Silence alarm request
+message SilenceAlarmRequest {
+  string alarm_id = 1;
+  string silenced_by = 2;
+  int32 duration_seconds = 3;
+  string notes = 4;
+}
+
+// Silence alarm response
+message SilenceAlarmResponse {
+  Alarm alarm = 1;
+  common.v1.Error error = 2;
+}
+
+// Escalate alarm request
+message EscalateAlarmRequest {
+  string alarm_id = 1;
+  string escalated_by = 2;
+  int32 new_level = 3;
+  string notes = 4;
+}
+
+// Escalate alarm response
+message EscalateAlarmResponse {
+  Alarm alarm = 1;
+  common.v1.Error error = 2;
+}
+
+// Stream alarms request
+message StreamAlarmsRequest {
+  string patient_id = 1;
+  repeated AlarmSeverity min_severity = 2;
+  repeated AlarmStatus status_filter = 3;
+  repeated AlarmType type_filter = 4;
+  bool include_resolved = 5;
+  google.protobuf.Timestamp since = 6;
+}
+
+// Alarm event for streaming
+message AlarmEvent {
+  oneof event {
+    Alarm created = 1;
+    Alarm updated = 2;
+    Alarm resolved = 3;
+    Alarm acknowledged = 4;
+    Alarm silenced = 5;
+    Alarm escalated = 6;
+    bool heartbeat = 7;
+  }
+  google.protobuf.Timestamp timestamp = 8;
+  string event_id = 9;
+  string source = 10;
+  map<string, string> event_metadata = 11;
+}
+
+// Alarm statistics
+message AlarmStatistics {
+  int32 total_alarms = 1;
+  int32 active_alarms = 2;
+  int32 acknowledged_alarms = 3;
+  int32 resolved_alarms = 4;
+  map<AlarmSeverity, int32> severity_counts = 5;
+  map<AlarmType, int32> type_counts = 6;
+  google.protobuf.Timestamp last_updated = 7;
+}
+
+// Get statistics request
+message GetStatisticsRequest {
+  string patient_id = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  repeated AlarmSeverity severity_filter = 4;
+  repeated AlarmType type_filter = 5;
+}
+
+// Get statistics response
+message GetStatisticsResponse {
+  AlarmStatistics statistics = 1;
+  common.v1.Error error = 2;
+}
+
+// Batch operations
+message BatchAlarmOperation {
+  string alarm_id = 1;
+  oneof operation {
+    AcknowledgeAlarmRequest acknowledge = 2;
+    ResolveAlarmRequest resolve = 3;
+    SilenceAlarmRequest silence = 4;
+    EscalateAlarmRequest escalate = 5;
+  }
+}
+
+message BatchAlarmRequest {
+  repeated BatchAlarmOperation operations = 1;
+  bool continue_on_error = 2;
+}
+
+message BatchAlarmResponse {
+  repeated BatchAlarmResult results = 1;
+  common.v1.Error error = 2;
+}
+
+message BatchAlarmResult {
+  string alarm_id = 1;
+  bool success = 2;
+  common.v1.Error error = 3;
+}
+
+// Alarm subscription
+message AlarmSubscription {
+  string id = 1;
+  string subscriber_id = 2;
+  repeated AlarmSeverity severity_filter = 3;
+  repeated AlarmType type_filter = 4;
+  repeated string patient_ids = 5;
+  repeated string device_ids = 6;
+  bool active = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+// Subscribe request
+message SubscribeAlarmsRequest {
+  string subscriber_id = 1;
+  repeated AlarmSeverity severity_filter = 2;
+  repeated AlarmType type_filter = 3;
+  repeated string patient_ids = 4;
+  repeated string device_ids = 5;
+}
+
+// Subscribe response
+message SubscribeAlarmsResponse {
+  AlarmSubscription subscription = 1;
+  common.v1.Error error = 2;
+}
+
+// Unsubscribe request
+message UnsubscribeAlarmsRequest {
+  string subscription_id = 1;
+  string subscriber_id = 2;
+}
+
+// Unsubscribe response
+message UnsubscribeAlarmsResponse {
+  bool success = 1;
+  common.v1.Error error = 2;
+}
