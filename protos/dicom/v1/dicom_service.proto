@@ -1,0 +1,174 @@
+syntax = "proto3";
+
+package dicom.v1;
+
+import "google/protobuf/timestamp.proto";
+import "common/v1/common.proto";
+
+option go_package = "github.com/vitalstream/protos/dicom/v1;dicomv1";
+option java_package = "com.vitalstream.dicom.v1";
+option java_multiple_files = true;
+
+// DICOM Service gRPC definition
+service DICOMService {
+  // Store DICOM file
+  rpc StoreDICOM(StoreDICOMRequest) returns (StoreDICOMResponse);
+  
+  // Retrieve DICOM file
+  rpc GetDICOM(GetDICOMRequest) returns (GetDICOMResponse);
+  
+  // Extract ECG waveform from DICOM
+  rpc ExtractWaveform(ExtractWaveformRequest) returns (ExtractWaveformResponse);
+  
+  // Query DICOM metadata
+  rpc QueryDICOM(QueryDICOMRequest) returns (QueryDICOMResponse);
+  
+  // Delete DICOM file
+  rpc DeleteDICOM(DeleteDICOMRequest) returns (DeleteDICOMResponse);
+  
+  // List DICOM files with pagination
+  rpc ListDICOM(ListDICOMRequest) returns (ListDICOMResponse);
+  
+  // Health check
+  rpc HealthCheck(common.v1.HealthCheckRequest) returns (common.v1.HealthCheckResponse);
+}
+
+// Store DICOM file request
+message StoreDICOMRequest {
+  bytes file_data = 1;
+  string patient_id = 2;
+  map<string, string> metadata = 3;
+  string study_instance_uid = 4;
+  string series_instance_uid = 5;
+}
+
+// Store DICOM file response
+message StoreDICOMResponse {
+  string dicom_id = 1;
+  string patient_id = 2;
+  string patient_name = 3;
+  string study_date = 4;
+  string modality = 5;
+  string file_path = 6;
+  int64 file_size = 7;
+  WaveformData waveform_data = 8;
+  google.protobuf.Timestamp created_at = 9;
+  string study_instance_uid = 10;
+  string series_instance_uid = 11;
+  string sop_instance_uid = 12;
+}
+
+// Get DICOM file request
+message GetDICOMRequest {
+  string dicom_id = 1;
+  bool include_metadata = 2;
+}
+
+// Get DICOM file response
+message GetDICOMResponse {
+  bytes file_data = 1;
+  string dicom_id = 2;
+  StoreDICOMResponse metadata = 3;
+}
+
+// Extract waveform request
+message ExtractWaveformRequest {
+  string dicom_id = 1;
+  repeated string channel_names = 2;  // Optional: extract specific channels
+}
+
+// Extract waveform response
+message ExtractWaveformResponse {
+  WaveformData waveform_data = 1;
+  string dicom_id = 2;
+}
+
+// Query DICOM request
+message QueryDICOMRequest {
+  string patient_id = 1;
+  string study_instance_uid = 2;
+  string modality = 3;
+  google.protobuf.Timestamp date_from = 4;
+  google.protobuf.Timestamp date_to = 5;
+  int32 page_size = 6;
+  string page_token = 7;
+}
+
+// Query DICOM response
+message QueryDICOMResponse {
+  repeated StoreDICOMResponse dicom_files = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Delete DICOM request
+message DeleteDICOMRequest {
+  string dicom_id = 1;
+  bool permanent = 2;  // If false, move to trash
+}
+
+// Delete DICOM response
+message DeleteDICOMResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// List DICOM request
+message ListDICOMRequest {
+  string patient_id = 1;
+  string modality = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+// List DICOM response
+message ListDICOMResponse {
+  repeated StoreDICOMResponse dicom_files = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Waveform data structure
+message WaveformData {
+  int32 num_channels = 1;
+  int32 num_samples = 2;
+  double sampling_frequency = 3;
+  repeated float samples = 4;
+  repeated string channel_names = 5;
+  double sensitivity = 6;
+  double baseline = 7;
+  string units = 8;
+  int32 bits_allocated = 9;
+  int32 bits_stored = 10;
+  bool is_signed = 11;
+}
+
+// DICOM metadata structure
+message DICOMMetadata {
+  string patient_id = 1;
+  string patient_name = 2;
+  string patient_birth_date = 3;
+  string patient_sex = 4;
+  string study_instance_uid = 5;
+  string series_instance_uid = 6;
+  string sop_instance_uid = 7;
+  string study_date = 8;
+  string series_date = 9;
+  string modality = 10;
+  string manufacturer = 11;
+  string manufacturer_model_name = 12;
+  string institution_name = 13;
+  string referring_physician_name = 14;
+  string performing_physician_name = 15;
+  repeated string study_description = 16;
+  repeated string series_description = 17;
+  string body_part_examined = 18;
+  string view_position = 19;
+  string photometric_interpretation = 20;
+  int32 rows = 21;
+  int32 columns = 22;
+  double pixel_spacing = 23;
+  double slice_thickness = 24;
+  double window_center = 25;
+  double window_width = 26;
+}
