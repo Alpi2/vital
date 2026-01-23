@@ -1,0 +1,390 @@
+syntax = "proto3";
+
+package device.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+import "common/v1/common.proto";
+import "common/v1/error.proto";
+import "common/v1/pagination.proto";
+
+option go_package = "github.com/vitalstream/protos/device/v1;devicev1";
+option java_package = "com.vitalstream.device.v1";
+option java_multiple_files = true;
+
+// Device type
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  DEVICE_TYPE_ECG_MONITOR = 1;
+  DEVICE_TYPE_BLOOD_PRESSURE = 2;
+  DEVICE_TYPE_PULSE_OXIMETER = 3;
+  DEVICE_TYPE_GLUCOMETER = 4;
+  DEVICE_TYPE_TEMPERATURE = 5;
+  DEVICE_TYPE_WEIGHT_SCALE = 6;
+  DEVICE_TYPE_ACTIVITY_TRACKER = 7;
+  DEVICE_TYPE_SLEEP_MONITOR = 8;
+  DEVICE_TYPE_MEDICATION_DISPENSER = 9;
+  DEVICE_TYPE_EMERGENCY_BUTTON = 10;
+  DEVICE_TYPE_FALL_DETECTOR = 11;
+  DEVICE_TYPE_GPS_TRACKER = 12;
+  DEVICE_TYPE_SMART_WATCH = 13;
+  DEVICE_TYPE_FITNESS_BAND = 14;
+  DEVICE_TYPE_HEARING_AID = 15;
+  DEVICE_TYPE_INSULIN_PUMP = 16;
+  DEVICE_TYPE_VENTILATOR = 17;
+  DEVICE_TYPE_INFUSION_PUMP = 18;
+  DEVICE_TYPE_HOSPITAL_BED = 19;
+  DEVICE_TYPE_WEARABLE_SENSOR = 20;
+}
+
+// Device status
+enum DeviceStatus {
+  DEVICE_STATUS_UNSPECIFIED = 0;
+  DEVICE_STATUS_OFFLINE = 1;
+  DEVICE_STATUS_ONLINE = 2;
+  DEVICE_STATUS_CONNECTING = 3;
+  DEVICE_STATUS_ERROR = 4;
+  DEVICE_STATUS_MAINTENANCE = 5;
+  DEVICE_STATUS_LOW_BATTERY = 6;
+  DEVICE_STATUS_CHARGING = 7;
+  DEVICE_STATUS_CALIBRATING = 8;
+  DEVICE_STATUS_UPDATING = 9;
+  DEVICE_STATUS_SUSPENDED = 10;
+}
+
+// Connection type
+enum ConnectionType {
+  CONNECTION_TYPE_UNSPECIFIED = 0;
+  CONNECTION_TYPE_BLUETOOTH = 1;
+  CONNECTION_TYPE_WIFI = 2;
+  CONNECTION_TYPE_CELLULAR = 3;
+  CONNECTION_TYPE_ETHERNET = 4;
+  CONNECTION_TYPE_USB = 5;
+  CONNECTION_TYPE_SERIAL = 6;
+  CONNECTION_TYPE_ZIGBEE = 7;
+  CONNECTION_TYPE_LORA = 8;
+  CONNECTION_TYPE_NFC = 9;
+}
+
+// Battery level
+message BatteryLevel {
+  int32 percentage = 1;
+  google.protobuf.Timestamp last_updated = 2;
+  bool is_charging = 3;
+  int32 voltage_mv = 4;
+  int32 temperature_celsius = 5;
+  int32 charge_cycles = 6;
+  google.protobuf.Timestamp estimated_full_charge = 7;
+}
+
+// Signal quality
+message SignalQuality {
+  double strength = 1; // Signal strength (0-100)
+  double snr = 2; // Signal-to-noise ratio
+  int32 bars = 3; // Signal bars (1-5)
+  google.protobuf.Timestamp last_updated = 4;
+  string frequency = 5;
+  double error_rate = 6;
+}
+
+// Location information
+message Location {
+  double latitude = 1;
+  double longitude = 2;
+  double altitude = 3;
+  double accuracy = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  string address = 6;
+  string geofence_id = 7;
+}
+
+// Device configuration
+message DeviceConfiguration {
+  string id = 1;
+  string device_id = 2;
+  map<string, google.protobuf.Any> settings = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  string created_by = 6;
+  string updated_by = 7;
+  bool is_active = 8;
+  int32 version = 9;
+}
+
+// Device message
+message Device {
+  string id = 1;
+  string patient_id = 2;
+  string serial_number = 3;
+  string model = 4;
+  string manufacturer = 5;
+  DeviceType type = 6;
+  DeviceStatus status = 7;
+  string firmware_version = 8;
+  string hardware_version = 9;
+  ConnectionType connection_type = 10;
+  BatteryLevel battery_level = 11;
+  SignalQuality signal_quality = 12;
+  Location location = 13;
+  map<string, string> metadata = 14;
+  google.protobuf.Timestamp created_at = 15;
+  google.protobuf.Timestamp updated_at = 16;
+  google.protobuf.Timestamp last_seen = 17;
+  string assigned_to = 18;
+  repeated string tags = 19;
+  DeviceConfiguration configuration = 20;
+  google.protobuf.Any custom_data = 21;
+}
+
+// Create device request
+message CreateDeviceRequest {
+  string patient_id = 1;
+  string serial_number = 2;
+  string model = 3;
+  string manufacturer = 4;
+  DeviceType type = 5;
+  ConnectionType connection_type = 6;
+  map<string, string> metadata = 7;
+  string assigned_to = 8;
+  repeated string tags = 9;
+  DeviceConfiguration configuration = 10;
+  google.protobuf.Any custom_data = 11;
+}
+
+// Create device response
+message CreateDeviceResponse {
+  Device device = 1;
+  common.v1.Error error = 2;
+}
+
+// Get devices request
+message GetDevicesRequest {
+  string patient_id = 1;
+  repeated DeviceType type = 2;
+  repeated DeviceStatus status = 3;
+  string manufacturer = 4;
+  string model = 5;
+  ConnectionType connection_type = 6;
+  common.v1.PaginationRequest pagination = 7;
+  string search_query = 8;
+  repeated string tags = 9;
+  google.protobuf.Timestamp last_seen_after = 10;
+  google.protobuf.Timestamp last_seen_before = 11;
+}
+
+// Get devices response
+message GetDevicesResponse {
+  repeated Device devices = 1;
+  int32 total_count = 2;
+  common.v1.PaginationResponse pagination = 3;
+  common.v1.Error error = 4;
+}
+
+// Update device request
+message UpdateDeviceRequest {
+  string device_id = 1;
+  string patient_id = 2;
+  string model = 3;
+  string manufacturer = 4;
+  DeviceType type = 5;
+  DeviceStatus status = 6;
+  string firmware_version = 7;
+  string hardware_version = 8;
+  ConnectionType connection_type = 9;
+  map<string, string> metadata = 10;
+  string assigned_to = 11;
+  repeated string tags = 12;
+  DeviceConfiguration configuration = 13;
+  google.protobuf.Any custom_data = 14;
+}
+
+// Update device response
+message UpdateDeviceResponse {
+  Device device = 1;
+  common.v1.Error error = 2;
+}
+
+// Delete device request
+message DeleteDeviceRequest {
+  string device_id = 1;
+  bool force = 2;
+}
+
+// Delete device response
+message DeleteDeviceResponse {
+  bool success = 1;
+  common.v1.Error error = 2;
+}
+
+// Get device request
+message GetDeviceRequest {
+  string device_id = 1;
+  bool include_configuration = 2;
+  bool include_location = 3;
+  bool include_battery = 4;
+  bool include_signal = 5;
+}
+
+// Get device response
+message GetDeviceResponse {
+  Device device = 1;
+  common.v1.Error error = 2;
+}
+
+// Stream device data request
+message StreamDeviceDataRequest {
+  string device_id = 1;
+  repeated string data_types = 2;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time = 4;
+  int32 sample_rate = 5;
+  bool real_time = 6;
+}
+
+// Device data point
+message DeviceDataPoint {
+  string device_id = 1;
+  string data_type = 2;
+  google.protobuf.Any value = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  map<string, string> metadata = 5;
+  string unit = 6;
+  double quality_score = 7;
+}
+
+// Stream device data response
+message StreamDeviceDataResponse {
+  DeviceDataPoint data_point = 1;
+  common.v1.Error error = 2;
+}
+
+// Device event
+message DeviceEvent {
+  string id = 1;
+  string device_id = 2;
+  enum EventType {
+    EVENT_TYPE_UNSPECIFIED = 0;
+    EVENT_TYPE_CONNECTED = 1;
+    EVENT_TYPE_DISCONNECTED = 2;
+    EVENT_TYPE_LOW_BATTERY = 3;
+    EVENT_TYPE_ERROR = 4;
+    EVENT_TYPE_MAINTENANCE_REQUIRED = 5;
+    EVENT_TYPE_FIRMWARE_UPDATE = 6;
+    EVENT_TYPE_CONFIGURATION_CHANGED = 7;
+    EVENT_TYPE_LOCATION_CHANGED = 8;
+    EVENT_TYPE_SIGNAL_LOST = 9;
+    EVENT_TYPE_CALIBRATION_REQUIRED = 10;
+    EVENT_TYPE_TAMPER_DETECTED = 11;
+  }
+  EventType event_type = 3;
+  string message = 4;
+  map<string, string> metadata = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  string severity = 7;
+  google.protobuf.Any event_data = 8;
+}
+
+// Stream device events request
+message StreamDeviceEventsRequest {
+  string device_id = 1;
+  repeated DeviceEvent.EventType event_types = 2;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time = 4;
+  bool real_time = 5;
+}
+
+// Stream device events response
+message StreamDeviceEventsResponse {
+  DeviceEvent event = 1;
+  common.v1.Error error = 2;
+}
+
+// Device command
+message DeviceCommand {
+  string id = 1;
+  string device_id = 2;
+  string command = 3;
+  map<string, google.protobuf.Any> parameters = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  string created_by = 7;
+  string status = 8;
+  google.protobuf.Timestamp executed_at = 9;
+  string result = 10;
+  common.v1.Error error = 11;
+}
+
+// Send device command request
+message SendDeviceCommandRequest {
+  string device_id = 1;
+  string command = 2;
+  map<string, google.protobuf.Any> parameters = 3;
+  google.protobuf.Duration timeout = 4;
+  bool wait_for_response = 5;
+}
+
+// Send device command response
+message SendDeviceCommandResponse {
+  DeviceCommand command = 1;
+  common.v1.Error error = 2;
+}
+
+// Device statistics
+message DeviceStatistics {
+  string device_id = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  int32 total_data_points = 4;
+  int32 total_events = 5;
+  double uptime_percentage = 6;
+  double average_signal_quality = 7;
+  int32 battery_drain_rate = 8;
+  map<string, int32> data_type_counts = 9;
+  map<string, int32> event_type_counts = 10;
+  google.protobuf.Timestamp last_updated = 11;
+}
+
+// Get device statistics request
+message GetDeviceStatisticsRequest {
+  string device_id = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  repeated string data_types = 4;
+  repeated DeviceEvent.EventType event_types = 5;
+}
+
+// Get device statistics response
+message GetDeviceStatisticsResponse {
+  DeviceStatistics statistics = 1;
+  common.v1.Error error = 2;
+}
+
+// Batch device operation
+message BatchDeviceOperation {
+  string device_id = 1;
+  oneof operation {
+    UpdateDeviceRequest update = 2;
+    DeleteDeviceRequest delete = 3;
+    SendDeviceCommandRequest command = 4;
+  }
+}
+
+// Batch device request
+message BatchDeviceRequest {
+  repeated BatchDeviceOperation operations = 1;
+  bool continue_on_error = 2;
+}
+
+// Batch device response
+message BatchDeviceResponse {
+  repeated BatchDeviceResult results = 1;
+  common.v1.Error error = 2;
+}
+
+// Batch device result
+message BatchDeviceResult {
+  string device_id = 1;
+  bool success = 2;
+  common.v1.Error error = 3;
+  google.protobuf.Any result = 4;
+}

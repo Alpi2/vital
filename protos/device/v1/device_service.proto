@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package device.v1;
+
+import "device/v1/device.proto";
+import "common/v1/common.proto";
+
+option go_package = "github.com/vitalstream/protos/device/v1;devicev1";
+option java_package = "com.vitalstream.device.v1";
+option java_multiple_files = true;
+
+// Device Manager Service gRPC definition
+service DeviceService {
+  // Create a new device
+  rpc CreateDevice(CreateDeviceRequest) returns (CreateDeviceResponse);
+  
+  // Get devices with filtering and pagination
+  rpc GetDevices(GetDevicesRequest) returns (GetDevicesResponse);
+  
+  // Get a specific device
+  rpc GetDevice(GetDeviceRequest) returns (GetDeviceResponse);
+  
+  // Update device information
+  rpc UpdateDevice(UpdateDeviceRequest) returns (UpdateDeviceResponse);
+  
+  // Delete a device
+  rpc DeleteDevice(DeleteDeviceRequest) returns (DeleteDeviceResponse);
+  
+  // Stream device data (server streaming)
+  rpc StreamDeviceData(StreamDeviceDataRequest) returns (stream DeviceDataPoint);
+  
+  // Stream device events (server streaming)
+  rpc StreamDeviceEvents(StreamDeviceEventsRequest) returns (stream DeviceEvent);
+  
+  // Send command to device
+  rpc SendDeviceCommand(SendDeviceCommandRequest) returns (SendDeviceCommandResponse);
+  
+  // Get device statistics
+  rpc GetDeviceStatistics(GetDeviceStatisticsRequest) returns (GetDeviceStatisticsResponse);
+  
+  // Batch operations on multiple devices
+  rpc BatchDeviceOperations(BatchDeviceRequest) returns (BatchDeviceResponse);
+  
+  // Bidirectional device communication
+  rpc DeviceChannel(stream DeviceCommand) returns (stream DeviceEvent);
+  
+  // Health check
+  rpc HealthCheck(common.v1.HealthCheckRequest) returns (common.v1.HealthCheckResponse);
+}
