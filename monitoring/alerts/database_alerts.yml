@@ -1,0 +1,119 @@
+# Database Alert Rules for VitalStream
+
+groups:
+  - name: database_alerts
+    interval: 30s
+    rules:
+      # PostgreSQL down
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL has been down for more than 1 minute"
+
+      # Too many connections
+      - alert: PostgreSQLTooManyConnections
+        expr: |
+          sum(pg_stat_activity_count) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Too many PostgreSQL connections"
+          description: "{{ $value }} active connections (threshold: 80)"
+
+      # High query duration
+      - alert: PostgreSQLSlowQueries
+        expr: |
+          pg_stat_activity_max_tx_duration > 60
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow PostgreSQL queries detected"
+          description: "Longest running query: {{ $value }}s (threshold: 60s)"
+
+      # Replication lag
+      - alert: PostgreSQLReplicationLag
+        expr: |
+          pg_replication_lag > 30
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL replication lag"
+          description: "Replication lag is {{ $value }}s (threshold: 30s)"
+
+      # Dead tuples
+      - alert: PostgreSQLDeadTuples
+        expr: |
+          (
+            pg_stat_user_tables_n_dead_tup
+            /
+            (pg_stat_user_tables_n_live_tup + pg_stat_user_tables_n_dead_tup)
+          ) > 0.1
+        for: 30m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High percentage of dead tuples"
+          description: "{{ $value | humanizePercentage }} dead tuples (threshold: 10%)"
+
+      # Redis down
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been down for more than 1 minute"
+
+      # Redis high memory usage
+      - alert: RedisHighMemoryUsage
+        expr: |
+          (
+            redis_memory_used_bytes
+            /
+            redis_memory_max_bytes
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis memory usage is {{ $value | humanizePercentage }} (threshold: 90%)"
+
+      # Redis rejected connections
+      - alert: RedisRejectedConnections
+        expr: |
+          increase(redis_rejected_connections_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis rejecting connections"
+          description: "{{ $value }} connections rejected in last 5 minutes"
+
+      # Database backup failed
+      - alert: DatabaseBackupFailed
+        expr: |
+          time() - database_backup_last_success_timestamp > 86400
+        for: 1h
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database backup failed"
+          description: "Last successful backup was {{ $value | humanizeDuration }} ago (threshold: 24h)"

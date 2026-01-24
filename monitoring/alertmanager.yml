@@ -1,0 +1,97 @@
+# Alertmanager Configuration for VitalStream
+
+global:
+  resolve_timeout: 5m
+  slack_api_url: 'YOUR_SLACK_WEBHOOK_URL'
+
+# Route configuration
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'default'
+  routes:
+    # Critical alerts go to multiple channels
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      continue: true
+    
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+    
+    # Database alerts
+    - match:
+        component: database
+      receiver: 'database-alerts'
+    
+    # Backend alerts
+    - match:
+        component: backend
+      receiver: 'backend-alerts'
+
+# Receivers configuration
+receivers:
+  - name: 'default'
+    slack_configs:
+      - channel: '#vitalstream-alerts'
+        title: 'VitalStream Alert'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+  - name: 'critical-alerts'
+    slack_configs:
+      - channel: '#vitalstream-critical'
+        title: '⚠️ CRITICAL: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+        color: 'danger'
+    email_configs:
+      - to: 'ops-team@example.com'
+        from: 'alertmanager@vitalstream.com'
+        smarthost: 'smtp.gmail.com:587'
+        auth_username: 'alertmanager@vitalstream.com'
+        auth_password: 'YOUR_EMAIL_PASSWORD'
+        headers:
+          Subject: 'CRITICAL: VitalStream Alert'
+
+  - name: 'warning-alerts'
+    slack_configs:
+      - channel: '#vitalstream-warnings'
+        title: '⚠️ Warning: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+        color: 'warning'
+
+  - name: 'database-alerts'
+    slack_configs:
+      - channel: '#vitalstream-database'
+        title: '💾 Database Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+  - name: 'backend-alerts'
+    slack_configs:
+      - channel: '#vitalstream-backend'
+        title: '🔧 Backend Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+# Inhibition rules
+inhibit_rules:
+  # Inhibit warning if critical is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']
+  
+  # Inhibit all alerts if service is down
+  - source_match:
+      alertname: 'BackendDown'
+    target_match_re:
+      alertname: '.*'
+    equal: ['instance']
