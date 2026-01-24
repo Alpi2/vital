@@ -1,0 +1,344 @@
+syntax = "proto3";
+
+package ml.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+import "common/v1/common.proto";
+import "common/v1/error.proto";
+import "common/v1/pagination.proto";
+
+option go_package = "github.com/vitalstream/protos/ml/v1;mlv1";
+option java_package = "com.vitalstream.ml.v1";
+option java_multiple_files = true;
+
+// Model type
+enum ModelType {
+  MODEL_TYPE_UNSPECIFIED = 0;
+  MODEL_TYPE_ECG_CLASSIFICATION = 1;
+  MODEL_TYPE_ARRHYTHMIA_DETECTION = 2;
+  MODEL_TYPE_HEART_RATE_VARIABILITY = 3;
+  MODEL_TYPE_ANOMALY_DETECTION = 4;
+  MODEL_TYPE_PREDICTIVE_ANALYTICS = 5;
+  MODEL_TYPE_RISK_ASSESSMENT = 6;
+  MODEL_TYPE_SEPSIS_PREDICTION = 7;
+  MODEL_TYPE_MORTALITY_PREDICTION = 8;
+  MODEL_TYPE_READMISSION_PREDICTION = 9;
+  MODEL_TYPE_DRUG_RESPONSE = 10;
+  MODEL_TYPE_IMAGE_CLASSIFICATION = 11;
+  MODEL_TYPE_NATURAL_LANGUAGE_PROCESSING = 12;
+  MODEL_TYPE_TIME_SERIES_FORECASTING = 13;
+  MODEL_TYPE_CLAIM_DETECTION = 14;
+  MODEL_TYPE_FRAUD_DETECTION = 15;
+}
+
+// Inference status
+enum InferenceStatus {
+  INFERENCE_STATUS_UNSPECIFIED = 0;
+  INFERENCE_STATUS_PENDING = 1;
+  INFERENCE_STATUS_PROCESSING = 2;
+  INFERENCE_STATUS_COMPLETED = 3;
+  INFERENCE_STATUS_FAILED = 4;
+  INFERENCE_STATUS_CANCELLED = 5;
+  INFERENCE_STATUS_TIMEOUT = 6;
+}
+
+// Model status
+enum ModelStatus {
+  MODEL_STATUS_UNSPECIFIED = 0;
+  MODEL_STATUS_TRAINING = 1;
+  MODEL_STATUS_TRAINED = 2;
+  MODEL_STATUS_VALIDATING = 3;
+  MODEL_STATUS_DEPLOYED = 4;
+  MODEL_STATUS_DEPRECATED = 5;
+  MODEL_STATUS_ERROR = 6;
+  MODEL_STATUS_MAINTENANCE = 7;
+}
+
+// Input data type
+enum InputDataType {
+  INPUT_DATA_TYPE_UNSPECIFIED = 0;
+  INPUT_DATA_TYPE_ECG_SIGNAL = 1;
+  INPUT_DATA_TYPE_PPG_SIGNAL = 2;
+  INPUT_DATA_TYPE_BLOOD_PRESSURE = 3;
+  INPUT_DATA_TYPE_GLUCOSE_LEVEL = 4;
+  INPUT_DATA_TYPE_TEMPERATURE = 5;
+  INPUT_DATA_TYPE_SPO2 = 6;
+  INPUT_DATA_TYPE_RESPIRATION_RATE = 7;
+  INPUT_DATA_TYPE_ACTIVITY_DATA = 8;
+  INPUT_DATA_TYPE_SLEEP_DATA = 9;
+  INPUT_DATA_TYPE_MEDICATION_DATA = 10;
+  INPUT_DATA_TYPE_LAB_RESULTS = 11;
+  INPUT_DATA_TYPE_VITAL_SIGNS = 12;
+  INPUT_DATA_TYPE_CLINICAL_NOTES = 13;
+  INPUT_DATA_TYPE_MEDICAL_IMAGE = 14;
+  INPUT_DATA_TYPE_GENOMIC_DATA = 15;
+}
+
+// Model information
+message ModelInfo {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+  ModelType type = 4;
+  ModelStatus status = 5;
+  string description = 6;
+  string created_by = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  google.protobuf.Timestamp trained_at = 10;
+  google.protobuf.Timestamp deployed_at = 11;
+  map<string, double> performance_metrics = 12;
+  map<string, string> hyperparameters = 13;
+  repeated string input_features = 14;
+  repeated string output_features = 15;
+  string model_path = 16;
+  int64 model_size_bytes = 17;
+  string framework = 18;
+  repeated InputDataType supported_input_types = 19;
+  google.protobuf.Any custom_metadata = 20;
+}
+
+// Input data
+message InputData {
+  string id = 1;
+  InputDataType type = 2;
+  google.protobuf.Any data = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  string source = 5;
+  string patient_id = 6;
+  string device_id = 7;
+  map<string, string> metadata = 8;
+  double sampling_rate = 9;
+  int32 duration_seconds = 10;
+  string units = 11;
+  double quality_score = 12;
+}
+
+// Inference request
+message InferenceRequest {
+  string model_id = 1;
+  repeated InputData inputs = 2;
+  map<string, google.protobuf.Any> parameters = 3;
+  bool include_confidence = 4;
+  bool include_explanations = 5;
+  bool include_probabilities = 6;
+  google.protobuf.Timestamp request_time = 7;
+  string request_id = 8;
+  string user_id = 9;
+  string session_id = 10;
+  int32 timeout_seconds = 11;
+  bool async = 12;
+}
+
+// Prediction result
+message PredictionResult {
+  string label = 1;
+  double confidence = 2;
+  map<string, double> probabilities = 3;
+  google.protobuf.Any explanation = 4;
+  map<string, double> feature_importance = 5;
+  string reasoning = 6;
+  google.protobuf.Any custom_result = 7;
+}
+
+// Inference response
+message InferenceResponse {
+  string request_id = 1;
+  string model_id = 2;
+  InferenceStatus status = 3;
+  repeated PredictionResult predictions = 4;
+  google.protobuf.Timestamp inference_time = 5;
+  google.protobuf.Duration processing_duration = 6;
+  map<string, google.protobuf.Any> metadata = 7;
+  common.v1.Error error = 8;
+  string version = 9;
+  google.protobuf.Timestamp created_at = 10;
+  string patient_id = 11;
+  repeated InputData inputs = 12;
+}
+
+// Batch inference request
+message BatchInferenceRequest {
+  repeated InferenceRequest requests = 1;
+  bool continue_on_error = 2;
+  int32 max_concurrent = 3;
+}
+
+// Batch inference response
+message BatchInferenceResponse {
+  repeated InferenceResponse responses = 1;
+  int32 total_requests = 2;
+  int32 successful_requests = 3;
+  int32 failed_requests = 4;
+  common.v1.Error error = 5;
+}
+
+// Stream inference request
+message StreamInferenceRequest {
+  string model_id = 1;
+  InputDataType input_type = 2;
+  bool real_time = 3;
+  int32 buffer_size = 4;
+  double sampling_rate = 5;
+  map<string, google.protobuf.Any> parameters = 6;
+  bool include_confidence = 7;
+  bool include_explanations = 8;
+}
+
+// Stream inference response
+message StreamInferenceResponse {
+  string request_id = 1;
+  PredictionResult prediction = 2;
+  InputData input_data = 3;
+  google.protobuf.Timestamp inference_time = 4;
+  google.protobuf.Duration processing_duration = 5;
+  common.v1.Error error = 6;
+}
+
+// Model training request
+message TrainModelRequest {
+  string model_name = 1;
+  ModelType type = 2;
+  repeated InputData training_data = 3;
+  repeated InputData validation_data = 4;
+  map<string, string> hyperparameters = 5;
+  string description = 6;
+  string created_by = 7;
+  bool async = 8;
+  int32 max_epochs = 9;
+  double learning_rate = 10;
+  int32 batch_size = 11;
+  string optimizer = 12;
+  string loss_function = 13;
+  repeated string metrics = 14;
+  google.protobuf.Any custom_config = 15;
+}
+
+// Model training response
+message TrainModelResponse {
+  string training_id = 1;
+  ModelInfo model = 2;
+  common.v1.Error error = 3;
+  google.protobuf.Timestamp started_at = 4;
+  google.protobuf.Timestamp completed_at = 5;
+  map<string, double> training_metrics = 6;
+  map<string, double> validation_metrics = 7;
+  int32 epochs_completed = 8;
+  double best_validation_score = 9;
+  string training_log = 10;
+}
+
+// Model evaluation request
+message EvaluateModelRequest {
+  string model_id = 1;
+  repeated InputData test_data = 2;
+  repeated string metrics = 3;
+  bool include_confusion_matrix = 4;
+  bool include_roc_curve = 5;
+  bool include_feature_importance = 6;
+}
+
+// Model evaluation response
+message EvaluateModelResponse {
+  string model_id = 1;
+  map<string, double> metrics = 2;
+  google.protobuf.Any confusion_matrix = 3;
+  google.protobuf.Any roc_curve = 4;
+  map<string, double> feature_importance = 5;
+  int32 test_samples = 6;
+  google.protobuf.Timestamp evaluation_time = 7;
+  common.v1.Error error = 8;
+}
+
+// Model deployment request
+message DeployModelRequest {
+  string model_id = 1;
+  string environment = 2;
+  map<string, string> deployment_config = 3;
+  bool rollback_on_failure = 4;
+  string deployed_by = 5;
+  bool canary_deployment = 6;
+  double canary_percentage = 7;
+}
+
+// Model deployment response
+message DeployModelResponse {
+  string deployment_id = 1;
+  string model_id = 2;
+  string environment = 3;
+  string status = 4;
+  google.protobuf.Timestamp deployed_at = 5;
+  string deployed_by = 6;
+  map<string, string> deployment_config = 7;
+  common.v1.Error error = 8;
+  string endpoint_url = 9;
+}
+
+// Model monitoring data
+message ModelMonitoring {
+  string model_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  int32 requests_per_minute = 3;
+  double average_response_time = 4;
+  double error_rate = 5;
+  double cpu_usage = 6;
+  double memory_usage = 7;
+  map<string, double> input_drift_metrics = 8;
+  map<string, double> output_drift_metrics = 9;
+  double prediction_confidence_avg = 10;
+  map<string, int32> prediction_distribution = 11;
+}
+
+// Get model monitoring request
+message GetModelMonitoringRequest {
+  string model_id = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  repeated string metrics = 4;
+  int32 aggregation_interval_minutes = 5;
+}
+
+// Get model monitoring response
+message GetModelMonitoringResponse {
+  string model_id = 1;
+  repeated ModelMonitoring monitoring_data = 2;
+  common.v1.Error error = 3;
+}
+
+// Model registry entry
+message ModelRegistryEntry {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+  ModelType type = 4;
+  ModelStatus status = 5;
+  string description = 6;
+  string repository_url = 7;
+  string commit_hash = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  string created_by = 11;
+  repeated string tags = 12;
+  map<string, string> metadata = 13;
+  bool is_public = 14;
+  string license = 15;
+}
+
+// Get model registry request
+message GetModelRegistryRequest {
+  string search_query = 1;
+  repeated ModelType type_filter = 2;
+  repeated ModelStatus status_filter = 3;
+  repeated string tags = 4;
+  bool include_public = 5;
+  common.v1.PaginationRequest pagination = 6;
+}
+
+// Get model registry response
+message GetModelRegistryResponse {
+  repeated ModelRegistryEntry models = 1;
+  int32 total_count = 2;
+  common.v1.PaginationResponse pagination = 3;
+  common.v1.Error error = 4;
+}

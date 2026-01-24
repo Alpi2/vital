@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package ml.v1;
+
+import "ml/v1/inference.proto";
+import "common/v1/common.proto";
+
+option go_package = "github.com/vitalstream/protos/ml/v1;mlv1";
+option java_package = "com.vitalstream.ml.v1";
+option java_multiple_files = true;
+
+// ML Inference Service gRPC definition
+service MLInferenceService {
+  // Single inference request
+  rpc Inference(InferenceRequest) returns (InferenceResponse);
+  
+  // Batch inference request
+  rpc BatchInference(BatchInferenceRequest) returns (BatchInferenceResponse);
+  
+  // Real-time streaming inference
+  rpc StreamInference(StreamInferenceRequest) returns (stream StreamInferenceResponse);
+  
+  // Train new model
+  rpc TrainModel(TrainModelRequest) returns (TrainModelResponse);
+  
+  // Evaluate model performance
+  rpc EvaluateModel(EvaluateModelRequest) returns (EvaluateModelResponse);
+  
+  // Deploy model to production
+  rpc DeployModel(DeployModelRequest) returns (DeployModelResponse);
+  
+  // Get model monitoring data
+  rpc GetModelMonitoring(GetModelMonitoringRequest) returns (GetModelMonitoringResponse);
+  
+  // Get model registry entries
+  rpc GetModelRegistry(GetModelRegistryRequest) returns (GetModelRegistryResponse);
+  
+  // Bidirectional model communication
+  rpc ModelChannel(stream InferenceRequest) returns (stream InferenceResponse);
+  
+  // Health check
+  rpc HealthCheck(common.v1.HealthCheckRequest) returns (common.v1.HealthCheckResponse);
+}
